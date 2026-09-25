@@ -1,0 +1,11 @@
+{
+	"name": "superpepetv",
+	"version": "1.0.0",
+	"description": "Old-school Pepe television. Generative channels in a PEPEPAINT portrait card. objkt.com interactive HTML. No fxhash.",
+	"license": "MIT",
+	"scripts": {
+		"zip": "node tools/zip-nft.mjs",
+		"hosted": "node tools/build-hosted.mjs",
+		"test": "node tools/codec-test.mjs"
+	}
+}

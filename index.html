@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SUPERPEPE TV</title>
+		<meta name="description" content="SUPERPEPE TV — an old-school Pepe television. Generative channels inside a PEPEPAINT portrait card." />
+		<link rel="stylesheet" href="styles.css" />
+		<script src="bootloader.js"></script>
+	</head>
+	<body>
+		<div id="card">
+			<div id="header">
+				<div id="header_title">SUPERPEPE TV</div>
+				<div id="header_buttons">
+					<button type="button" class="header_button" id="power_button" aria-pressed="true" title="Power">POWER</button>
+					<button type="button" class="header_button" id="source_button" title="Cycle source">SOURCE</button>
+					<button type="button" class="header_button" id="mint_button" title="Mint kit (d)">MINT</button>
+					<button type="button" class="header_button" id="help_button" title="Help (?)">?</button>
+				</div>
+			</div>
+
+			<div id="screen_wrap">
+				<div id="bezel">
+					<div id="screen">
+						<canvas id="view" width="360" height="312"></canvas>
+						<div id="vignette"></div>
+						<div id="bug">CH 07
+STATIC KEK</div>
+						<div id="src_bug">GEN</div>
+						<div id="vu" aria-hidden="true"><span id="vu_b"></span><span id="vu_m"></span><span id="vu_h"></span></div>
+						<div id="power_cover"></div>
+						<div id="notice" class="hidden">
+							<div id="notice_text">CAMERA BLOCKED</div>
+							<a id="open_app" class="header_button" href="#" target="_blank" rel="noopener noreferrer">OPEN THE APP</a>
+							<button type="button" class="header_button" id="notice_close">X</button>
+						</div>
+					</div>
+					<div id="led"></div>
+				</div>
+			</div>
+
+			<div id="deck">
+				<button type="button" class="header_button" id="ch_prev" title="Channel down">CH-</button>
+				<button type="button" class="header_button" id="ch_next" title="Channel up">CH+</button>
+				<button type="button" class="header_button" id="cam_button" aria-pressed="false" title="Camera">CAM</button>
+				<button type="button" class="header_button" id="mic_button" aria-pressed="false" title="Microphone">MIC</button>
+				<button type="button" class="header_button" id="file_button" aria-pressed="false" title="Drop a file">FILE</button>
+				<button type="button" class="header_button" id="rand_button" title="New variation">RAND</button>
+				<button type="button" class="header_button" id="snap_button" title="Cover PNG (s)">SNAP</button>
+				<button type="button" class="header_button" id="rec_button" title="Record 8 seconds">REC</button>
+			</div>
+
+			<div id="footer_bar">1-8 CH &nbsp; 0 SNOW &nbsp; ARROWS &nbsp; H HIDE &nbsp; ? HELP</div>
+
+			<div id="info_overlay">
+				<div class="info_row_title">SUPERPEPE TV</div>
+				<div class="info_row">OLD-SCHOOL PEPE TELEVISION.</div>
+				<div class="info_row">EIGHT CHANNELS. GEN PICTURE ALWAYS MOVES.</div>
+				<div class="info_row">&nbsp;</div>
+				<div class="info_row">1-8 JUMP &nbsp; 0 SNOW &nbsp; LEFT/RIGHT = CH</div>
+				<div class="info_row">H HIDE CONTROLS &nbsp; ? THIS PANEL</div>
+				<div class="info_row">S SNAP PNG &nbsp; V OR D MINT</div>
+				<div class="info_row">CAM / MIC / FILE DRIVE THE PICTURE</div>
+				<div class="info_row">DROP A VIDEO OR AUDIO FILE ON THE SET</div>
+				<div class="info_row">&nbsp;</div>
+				<div class="info_row">IF THE IFRAME BLOCKS THE CAMERA,</div>
+				<div class="info_row">OPEN THE APP ON THE HOSTED SET.</div>
+				<div class="info_row">YOUTUBE EXISTS ONLY ON THAT HOST.</div>
+				<div class="info_row">&nbsp;</div>
+				<div class="info_row">PEPEPAINT V1 BY NATHAN GREGG — MIT.</div>
+				<div class="info_row">ART, FONTS, VISUAL SYSTEM.</div>
+				<div class="info_row">UNSCII BY VIZNUT.</div>
+				<div class="info_row">SUPERPEPEPAINT BY ARWYN6969 — MINT/HOST.</div>
+				<div class="info_row">SUPERPEPE TV — MIT, SAME TERMS.</div>
+				<div class="info_row">OBJKT ONLY. NO FXHASH.</div>
+			</div>
+
+			<div id="mint_panel" class="mint_panel hidden">
+				<div class="mint_form">
+					<div class="mint_form_header">
+						<div id="mint_title">MINT</div>
+						<button type="button" class="header_button" id="mint_close">X</button>
+					</div>
+					<div class="mint_step">1. COVER STILL</div>
+					<div class="mint_row">
+						<button type="button" class="header_button" id="mint_snap">SNAP PNG</button>
+					</div>
+					<div class="mint_step">2. SHORT CLIP (~8s)</div>
+					<div class="mint_row">
+						<button type="button" class="header_button" id="mint_rec">REC</button>
+						<span id="record_status" class="mint_hint"></span>
+					</div>
+					<div class="mint_step">3. METADATA JSON</div>
+					<div class="mint_row">
+						<button type="button" class="header_button" id="meta_button">METADATA</button>
+					</div>
+					<div class="mint_step">4. OBJKT INTERACTIVE ZIP</div>
+					<div class="mint_info">UPLOAD THE ZIP FROM npm run zip AS THE ARTEFACT. COVER PNG + OPTIONAL REC. PASTE THE SPTV1 CODE INTO THE DESCRIPTION. OBJKT ONLY. NO FXHASH.</div>
+					<div class="mint_row">
+						<a class="header_button" id="objkt_link" href="https://objkt.com/create" target="_blank" rel="noopener noreferrer">OPEN OBJKT</a>
+					</div>
+					<div class="mint_step">SPTV1 CODE</div>
+					<textarea id="code_area" rows="2" spellcheck="false" autocomplete="off"></textarea>
+					<div class="mint_row">
+						<button type="button" class="header_button" id="code_copy">COPY</button>
+						<button type="button" class="header_button" id="code_import">IMPORT</button>
+					</div>
+					<div id="mint_status" class="mint_status">&nbsp;</div>
+				</div>
+			</div>
+
+			<div id="feedback_dialog" role="status">
+				<div class="feedback_row" id="feedback_text"></div>
+			</div>
+		</div>
+		<video id="cam" playsinline muted></video>
+		<input id="file_input" type="file" accept="audio/*,video/*" />
+		<script src="brushes.js"></script>
+		<script src="channels.js"></script>
+		<script src="effects.js"></script>
+		<script src="audio.js"></script>
+		<script src="engine.js"></script>
+		<script src="mint.js"></script>
+	</body>
+</html>
