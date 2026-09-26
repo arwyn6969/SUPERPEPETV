@@ -124,21 +124,34 @@ var SPTVMint = (function () {
       return;
     }
     var chunks = [];
-    recorder.ondataavailable = function (ev) {
+    var rec = recorder;
+    rec.ondataavailable = function (ev) {
       if (ev.data && ev.data.size) chunks.push(ev.data);
     };
-    recorder.onstop = function () {
-      var type = recorder.mimeType || mime || "video/webm";
+    rec.onerror = function () {
+      clearInterval(timer);
+      if (recorder === rec) recorder = null;
+      SPTV.feedback("REC FAILED");
+      var failed = $("record_status");
+      if (failed) failed.textContent = "FAILED";
+    };
+    rec.onstop = function () {
+      clearInterval(timer);
+      var type = rec.mimeType || mime || "video/webm";
       var ext = type.indexOf("mp4") >= 0 ? "mp4" : "webm";
+      if (recorder === rec) recorder = null;
+      if (!chunks.length) {
+        SPTV.feedback("REC EMPTY");
+        return;
+      }
       var blob = new Blob(chunks, { type: type });
       var s = SPTV.getState();
       downloadBlob(blob, "superpepetv-ch" + s.id + "-rec." + ext);
       SPTV.feedback("REC SAVED");
-      recorder = null;
       var status = $("record_status");
       if (status) status.textContent = "SAVED";
     };
-    recorder.start();
+    rec.start();
     var left = 8;
     var status = $("record_status");
     if (status) status.textContent = "REC " + left;

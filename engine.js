@@ -11,7 +11,10 @@ var SPTV = (function () {
   var frame = 0;
   var t0 = 0;
   var lastDemo = 0;
-  var booted = false;
+  var mediaGen = 0;
+  var gradKey = "";
+  var grad = null;
+  var standbyDrawn = false;
 
   var state = {
     channel: 1,
@@ -220,7 +223,18 @@ var SPTV = (function () {
     }
   }
 
+  function beginMedia() {
+    mediaGen += 1;
+    return mediaGen;
+  }
+
+  function dropStream(stream) {
+    if (!stream) return;
+    stream.getTracks().forEach(function (track) { track.stop(); });
+  }
+
   function useGen() {
+    beginMedia();
     stopStream();
     clearPicture();
     stopFileAudio();
@@ -280,6 +294,7 @@ var SPTV = (function () {
         feedback("YT IS HOSTED ONLY");
         return;
       }
+      beginMedia();
       stopStream();
       clearPicture();
       state.source = "YT";
@@ -295,13 +310,19 @@ var SPTV = (function () {
       failSoft("CAMERA BLOCKED");
       return;
     }
+    var ticket = beginMedia();
     md.getUserMedia({ video: { facingMode: "user" }, audio: true }).then(function (stream) {
+      if (ticket !== mediaGen) { dropStream(stream); return; }
       armCam(stream, true);
     }, function () {
+      if (ticket !== mediaGen) return;
       md.getUserMedia({ video: true, audio: false }).then(function (stream) {
+        if (ticket !== mediaGen) { dropStream(stream); return; }
         armCam(stream, false);
         feedback("CAM ON  MIC OFF");
-      }, function () { failSoft("CAMERA BLOCKED"); });
+      }, function () {
+        if (ticket === mediaGen) failSoft("CAMERA BLOCKED");
+      });
     });
   }
 
@@ -313,7 +334,8 @@ var SPTV = (function () {
     state.source = "CAM";
     video.srcObject = stream;
     video.muted = true;
-    video.play();
+    var play = video.play();
+    if (play && play.catch) play.catch(function () {});
     if (withAudio && window.SPTVAudio) SPTVAudio.attachStream(stream);
     else if (window.SPTVAudio) SPTVAudio.useGen();
     hideNotice();
@@ -327,7 +349,9 @@ var SPTV = (function () {
       failSoft("MIC BLOCKED");
       return;
     }
+    var ticket = beginMedia();
     md.getUserMedia({ audio: true, video: false }).then(function (stream) {
+      if (ticket !== mediaGen) { dropStream(stream); return; }
       stopStream();
       clearPicture();
       stopFileAudio();
@@ -338,11 +362,14 @@ var SPTV = (function () {
       hideNotice();
       updateChrome();
       feedback("MIC");
-    }, function () { failSoft("MIC BLOCKED"); });
+    }, function () {
+      if (ticket === mediaGen) failSoft("MIC BLOCKED");
+    });
   }
 
   function onFile(file) {
     if (!file) return;
+    beginMedia();
     stopStream();
     clearPicture();
     stopFileAudio();
@@ -432,8 +459,12 @@ var SPTV = (function () {
     for (var i = 0; i < n; i++) {
       state.stamps.push(makeStamp(ch, palette, Math.random, true));
     }
-    var cap = ch.cap + 8;
-    if (state.stamps.length > cap) state.stamps = state.stamps.slice(state.stamps.length - cap);
+    var limit = ch.cap + 8;
+    var i = 0;
+    while (state.stamps.length > limit && i < state.stamps.length) {
+      if (state.stamps[i].burst) state.stamps.splice(i, 1);
+      else i += 1;
+    }
   }
 
   function demoLevels(t, now, live) {
@@ -463,6 +494,17 @@ var SPTV = (function () {
 
   function draw(now) {
     if (!t0) t0 = now;
+    if (!state.power) {
+      if (!standbyDrawn) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, W, H);
+        standbyDrawn = true;
+      }
+      frame += 1;
+      return;
+    }
+    standbyDrawn = false;
     var t = (now - t0) / 1000;
     var ch = CHANNELS[state.channel];
     var kn = state.knobs;
@@ -477,67 +519,72 @@ var SPTV = (function () {
     if (kn.crt > 0.6) filter = (filter === "none" ? "" : filter + " ") + "contrast(" + (1.05 + kn.crt * 0.35).toFixed(2) + ") saturate(" + (1 + kn.crt * 0.4).toFixed(2) + ")";
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     sctx.clearRect(0, 0, W, H);
-    if ("filter" in sctx) sctx.filter = state.power ? filter : "none";
+    if ("filter" in sctx && sctx.filter !== filter) sctx.filter = filter;
 
-    if (!state.power) {
-      sctx.fillStyle = "#000";
-      sctx.fillRect(0, 0, W, H);
-    } else {
-      var g = sctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, ch.bg[0]);
-      g.addColorStop(1, ch.bg[1]);
-      sctx.fillStyle = g;
-      sctx.fillRect(0, 0, W, H);
-      var sweep = ((t * 36) % (H + 30)) - 15;
-      sctx.fillStyle = "rgba(190,255,170,0.045)";
-      sctx.fillRect(0, sweep, W, 16);
+    if (gradKey !== ch.id) {
+      grad = sctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, ch.bg[0]);
+      grad.addColorStop(1, ch.bg[1]);
+      gradKey = ch.id;
+    }
+    sctx.fillStyle = grad;
+    sctx.fillRect(0, 0, W, H);
+    var sweep = ((t * 36) % (H + 30)) - 15;
+    sctx.fillStyle = "rgba(190,255,170,0.045)";
+    sctx.fillRect(0, sweep, W, 16);
 
-      var showVideo = (state.source === "CAM" || state.source === "FILE") && video && video.readyState >= 2 && video.videoWidth;
-      if (showVideo) {
-        var vw = video.videoWidth;
-        var vh = video.videoHeight;
-        var sc = Math.max(W / vw, H / vh);
-        var dw = vw * sc;
-        var dh = vh * sc;
+    var showVideo = (state.source === "CAM" || state.source === "FILE") && video && video.readyState >= 2 && video.videoWidth;
+    if (showVideo) {
+      var vw = video.videoWidth;
+      var vh = video.videoHeight;
+      var sc = Math.max(W / vw, H / vh);
+      var dw = vw * sc;
+      var dh = vh * sc;
+      sctx.save();
+      sctx.beginPath();
+      sctx.ellipse(W / 2, H / 2, W * 0.46, H * 0.46, 0, 0, Math.PI * 2);
+      sctx.clip();
+      sctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      sctx.restore();
+    }
+
+    if (ch.motion === "snow") drawSnow(0.88);
+    if (now < state.snowUntil) {
+      drawSnow(1);
+      var u = (state.snowUntil - now) / 420;
+      if (u > 0.72) {
+        sctx.fillStyle = "rgba(255,255,255," + ((u - 0.72) / 0.28) + ")";
+        sctx.fillRect(0, 0, W, H);
+      }
+    } else if (state.source !== "YT") {
+      sctx.imageSmoothingEnabled = false;
+      var kept = [];
+      var dropped = false;
+      for (var i = 0; i < state.stamps.length; i++) {
+        var st = state.stamps[i];
+        var p = place(st, ch, t, levels);
+        if (!p) { dropped = true; continue; }
+        kept.push(st);
+        var img = brushes[st.id];
+        if (!img || !img.complete || !img.naturalWidth) continue;
+        var size = 54 * p.scale;
         sctx.save();
-        sctx.beginPath();
-        sctx.ellipse(W / 2, H / 2, W * 0.46, H * 0.46, 0, 0, Math.PI * 2);
-        sctx.clip();
-        sctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        sctx.translate(p.x, p.y);
+        sctx.rotate(p.rot);
+        sctx.drawImage(img, -size / 2, -size / 2, size, size);
         sctx.restore();
       }
-
-      if (ch.motion === "snow") drawSnow(0.88);
-      if (now < state.snowUntil) {
-        drawSnow(1);
-        var u = (state.snowUntil - now) / 420;
-        if (u > 0.72) {
-          sctx.fillStyle = "rgba(255,255,255," + ((u - 0.72) / 0.28) + ")";
-          sctx.fillRect(0, 0, W, H);
-        }
-      } else if (state.source !== "YT") {
-        var kept = [];
-        for (var i = 0; i < state.stamps.length; i++) {
-          var st = state.stamps[i];
-          var p = place(st, ch, t, levels);
-          if (!p) continue;
-          kept.push(st);
-          var img = brushes[st.id];
-          if (!img || !img.complete || !img.naturalWidth) continue;
-          var size = 54 * p.scale;
-          sctx.save();
-          sctx.translate(p.x, p.y);
-          sctx.rotate(p.rot);
-          sctx.imageSmoothingEnabled = false;
-          sctx.drawImage(img, -size / 2, -size / 2, size, size);
-          sctx.restore();
-        }
-        state.stamps = kept;
-      }
+      if (dropped) state.stamps = kept;
     }
     if ("filter" in sctx) sctx.filter = "none";
 
-    var shakeAmp = state.power ? (levels.bass || 0) * (ch.audio.bass === "shake" ? 7 : ch.audio.bass === "punch" ? 5 : 2) : 0;
+    var shakeAmp = (levels.bass || 0) * (ch.audio.bass === "shake" ? 7 : ch.audio.bass === "punch" ? 5 : 2);
+    var shakeX = 0;
+    var shakeY = 0;
+    if (shakeAmp > 0.8) {
+      shakeX = (Math.random() - 0.5) * shakeAmp;
+      shakeY = (Math.random() - 0.5) * shakeAmp * 0.6;
+    }
     var glitch = Math.max(kn.glitch * 0.15, (levels.high || 0) * kn.glitch);
     SPTVEffects.composite(ctx, scene, {
       t: t,
@@ -549,14 +596,14 @@ var SPTV = (function () {
       poster: kn.poster,
       dither: kn.dither,
       crt: kn.crt,
-      shakeX: (Math.random() - 0.5) * shakeAmp,
-      shakeY: (Math.random() - 0.5) * shakeAmp * 0.6
+      shakeX: shakeX,
+      shakeY: shakeY
     });
 
     var vb = $("vu_b");
     var vm = $("vu_m");
     var vh = $("vu_h");
-    if (vb) {
+    if (vb && (frame & 1) === 0) {
       vb.style.transform = "scaleY(" + (0.08 + levels.bass).toFixed(3) + ")";
       vm.style.transform = "scaleY(" + (0.08 + levels.mid).toFixed(3) + ")";
       vh.style.transform = "scaleY(" + (0.08 + levels.high).toFixed(3) + ")";
@@ -567,9 +614,6 @@ var SPTV = (function () {
   function loop(now) {
     requestAnimationFrame(loop);
     draw(now);
-    if (!booted) {
-      booted = true;
-    }
     if (frame === 10 && window.$bootloader && $bootloader.isCapture && !$bootloader._captured) {
       setFeatures();
       $bootloader.capture();
@@ -704,7 +748,6 @@ var SPTV = (function () {
     window.addEventListener("resize", fit);
     updateChrome();
     state.snowUntil = performance.now() + 380;
-    if (window.SPTVAudio) SPTVAudio.unlock();
     preload(function () {
       requestAnimationFrame(loop);
     });

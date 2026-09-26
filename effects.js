@@ -8,7 +8,6 @@ var SPTVEffects = (function () {
   var post = null;
   var pctx = null;
   var dither = null;
-  var noise = null;
   var noiseAt = 0;
 
   function scratch(which, w, h) {
@@ -30,25 +29,34 @@ var SPTVEffects = (function () {
     return which === "tiny" ? tctx : pctx;
   }
 
+  var noiseFrames = null;
+  var noiseIndex = 0;
+  var scan = null;
+
   function noiseTile(now) {
-    if (!noise) {
-      noise = document.createElement("canvas");
-      noise.width = 128;
-      noise.height = 96;
-    }
-    if (now - noiseAt > 90) {
-      noiseAt = now;
-      var nctx = noise.getContext("2d");
-      var img = nctx.createImageData(128, 96);
-      var d = img.data;
-      for (var i = 0; i < d.length; i += 4) {
-        var v = (Math.random() * 255) | 0;
-        d[i] = d[i + 1] = d[i + 2] = v;
-        d[i + 3] = 255;
+    if (!noiseFrames) {
+      noiseFrames = [];
+      for (var n = 0; n < 4; n++) {
+        var c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 96;
+        var nctx = c.getContext("2d");
+        var img = nctx.createImageData(128, 96);
+        var d = img.data;
+        for (var i = 0; i < d.length; i += 4) {
+          var v = (Math.random() * 255) | 0;
+          d[i] = d[i + 1] = d[i + 2] = v;
+          d[i + 3] = 255;
+        }
+        nctx.putImageData(img, 0, 0);
+        noiseFrames.push(c);
       }
-      nctx.putImageData(img, 0, 0);
     }
-    return noise;
+    if (now - noiseAt > 80) {
+      noiseAt = now;
+      noiseIndex = (noiseIndex + 1) % noiseFrames.length;
+    }
+    return noiseFrames[noiseIndex];
   }
 
   function ditherTile() {
@@ -115,35 +123,32 @@ var SPTVEffects = (function () {
       source = tiny;
     }
 
-    var bands = 22;
-    var bh = Math.ceil(h / bands);
     var t = opt.t || 0;
-    for (var i = 0; i < bands; i++) {
-      var sy = Math.min(h - 1, Math.floor((i / bands) * source.height));
-      var sh = Math.max(1, Math.floor(source.height / bands));
-      var dy = i * bh;
-      var dh = Math.min(bh, h - dy);
-      if (dh <= 0) break;
-      var wave = Math.sin(t * 2.4 + i * 0.55) * (opt.wave || 0) * 12;
-      var track = 0;
-      if ((opt.vhs || 0) > 0.25 && i === (Math.floor(t * 3) % bands)) {
-        track = opt.vhs * 16;
+    var waveAmp = (opt.wave || 0) * 12;
+    var trackAmp = (opt.vhs || 0) > 0.25 ? opt.vhs * 16 : 0;
+    var glitchAmp = (opt.glitch || 0) > 0.18 ? opt.glitch * 22 : 0;
+    if (waveAmp + trackAmp + glitchAmp < 0.8) {
+      ctx.drawImage(source, 0, 0, w, h);
+    } else {
+      var bands = 22;
+      var bh = Math.ceil(h / bands);
+      for (var i = 0; i < bands; i++) {
+        var sy = Math.min(source.height - 1, Math.floor((i / bands) * source.height));
+        var sh = Math.max(1, Math.floor(source.height / bands));
+        var dy = i * bh;
+        var dh = Math.min(bh, h - dy);
+        if (dh <= 0) break;
+        var wave = Math.sin(t * 2.4 + i * 0.55) * waveAmp;
+        var track = trackAmp && i === (Math.floor(t * 3) % bands) ? trackAmp : 0;
+        var gl = glitchAmp && (i + Math.floor(t * 8)) % 6 === 0 ? (i % 2 ? 1 : -1) * glitchAmp : 0;
+        ctx.drawImage(source, 0, sy, source.width, sh, wave + track + gl, dy, w, dh);
       }
-      var gl = 0;
-      if ((opt.glitch || 0) > 0.42 && (i + Math.floor(t * 8)) % 6 === 0) {
-        gl = (i % 2 ? 1 : -1) * opt.glitch * 20;
-      }
-      ctx.drawImage(source, 0, sy, source.width, sh, wave + track + gl, dy, w, dh);
     }
-
-    ctx.fillStyle = "rgba(0,0,0,0.16)";
-    for (var y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
 
     if ((opt.dither || 0) > 0.2) {
       ctx.globalAlpha = Math.min(0.45, opt.dither * 0.4);
-      var tile = ditherTile();
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(tile, 0, 0, w, h);
+      ctx.drawImage(ditherTile(), 0, 0, w, h);
       ctx.globalAlpha = 1;
     }
 
@@ -154,15 +159,23 @@ var SPTVEffects = (function () {
       ctx.globalAlpha = 1;
     }
 
-    if ((opt.glitch || 0) > 0.72) {
+    if ((opt.glitch || 0) > 0.5) {
       ctx.globalAlpha = 0.35;
       ctx.fillStyle = (Math.floor(t * 12) % 2) ? "#d0ffd0" : "#042";
-      var gy = Math.floor((Math.sin(t * 9) * 0.5 + 0.5) * h);
-      ctx.fillRect(0, gy, w, 3);
+      ctx.fillRect(0, Math.floor((Math.sin(t * 9) * 0.5 + 0.5) * h), w, 3);
       ctx.globalAlpha = 1;
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (!scan || scan.width !== w || scan.height !== h) {
+      scan = document.createElement("canvas");
+      scan.width = w;
+      scan.height = h;
+      var sline = scan.getContext("2d");
+      sline.fillStyle = "rgba(0,0,0,0.16)";
+      for (var y = 0; y < h; y += 3) sline.fillRect(0, y, w, 1);
+    }
+    ctx.drawImage(scan, 0, 0);
   }
 
   return { composite: composite, noiseTile: noiseTile };

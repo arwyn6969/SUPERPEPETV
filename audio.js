@@ -9,8 +9,8 @@ var SPTVAudio = (function () {
   var genGain = null;
   var recNode = null;
   var streamNode = null;
-  var elementNode = null;
-  var elementGain = null;
+  var elementGain = { VIDEO: null, AUDIO: null };
+  var elementNode = { VIDEO: null, AUDIO: null };
   var prevBass = 0;
   var lastOnset = 0;
   var zeros = { rms: 0, bass: 0, mid: 0, high: 0, onset: 0 };
@@ -57,7 +57,7 @@ var SPTVAudio = (function () {
     lfoGain.connect(o1.frequency);
     lfo.start();
 
-    var buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    var buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     var data = buffer.getChannelData(0);
     for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     var noise = ctx.createBufferSource();
@@ -91,12 +91,18 @@ var SPTVAudio = (function () {
     master.gain.value = muted ? 0 : 0.9;
   }
 
+  function silenceElements() {
+    if (elementGain.VIDEO) elementGain.VIDEO.gain.value = 0;
+    if (elementGain.AUDIO) elementGain.AUDIO.gain.value = 0;
+  }
+
   function attachStream(stream) {
     if (!ensure()) return;
     unlock();
     if (streamNode) {
       try { streamNode.disconnect(); } catch (err) {}
     }
+    silenceElements();
     try {
       streamNode = ctx.createMediaStreamSource(stream);
       streamNode.connect(master);
@@ -113,17 +119,20 @@ var SPTVAudio = (function () {
       try { streamNode.disconnect(); } catch (err) {}
       streamNode = null;
     }
-    if (!elementNode) {
+    var key = el.tagName === "VIDEO" ? "VIDEO" : "AUDIO";
+    if (!elementNode[key]) {
       try {
-        elementGain = ctx.createGain();
-        elementNode = ctx.createMediaElementSource(el);
-        elementNode.connect(elementGain);
-        elementGain.connect(master);
+        elementGain[key] = ctx.createGain();
+        elementGain[key].gain.value = 0;
+        elementNode[key] = ctx.createMediaElementSource(el);
+        elementNode[key].connect(elementGain[key]);
+        elementGain[key].connect(master);
       } catch (err) {
-        elementNode = null;
+        elementNode[key] = null;
       }
     }
-    if (elementGain) elementGain.gain.value = 1;
+    silenceElements();
+    if (elementGain[key]) elementGain[key].gain.value = 1;
     setGen(false);
   }
 
@@ -132,7 +141,7 @@ var SPTVAudio = (function () {
       try { streamNode.disconnect(); } catch (err) {}
       streamNode = null;
     }
-    if (elementGain) elementGain.gain.value = 0;
+    silenceElements();
     setGen(true);
   }
 
