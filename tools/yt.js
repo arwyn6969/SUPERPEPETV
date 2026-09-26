@@ -13,11 +13,11 @@
   window.SPTVYouTube = {
     enter: function () {
       var url = window.prompt("PASTE A YOUTUBE URL");
-      if (!url) return;
+      if (!url) return false;
       var id = parseId(url);
       if (!id) {
         window.alert("NEED A YOUTUBE URL");
-        return;
+        return false;
       }
       var screen = document.getElementById("screen");
       if (!screen) return;
@@ -31,6 +31,7 @@
       }
       frame.style.display = "block";
       frame.src = "https://www.youtube.com/embed/" + id + "?autoplay=1";
+      return true;
     },
     exit: function () {
       if (!frame) return;

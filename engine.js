@@ -10,7 +10,6 @@ var SPTV = (function () {
   var view, ctx, scene, sctx, video;
   var frame = 0;
   var t0 = 0;
-  var lastDemo = 0;
   var mediaGen = 0;
   var gradKey = "";
   var grad = null;
@@ -189,7 +188,8 @@ var SPTV = (function () {
     var link = $("open_app");
     if (!box) return;
     label.textContent = text;
-    if (link) link.classList.toggle("hidden", !withLink);
+    var here = location.hostname === "arwyn.party" || /\.workers\.dev$/.test(location.hostname);
+    if (link) link.classList.toggle("hidden", !withLink || here);
     box.classList.remove("hidden");
   }
 
@@ -294,13 +294,19 @@ var SPTV = (function () {
         feedback("YT IS HOSTED ONLY");
         return;
       }
+      if (!SPTVYouTube.enter()) {
+        feedback("YT CANCELLED");
+        return;
+      }
       beginMedia();
       stopStream();
       clearPicture();
+      stopFileAudio();
       state.source = "YT";
-      SPTVYouTube.enter();
       if (window.SPTVAudio) SPTVAudio.useGen();
+      hideNotice();
       updateChrome();
+      feedback("YOUTUBE");
     }
   }
 
@@ -470,17 +476,12 @@ var SPTV = (function () {
   function demoLevels(t, now, live) {
     if (state.source !== "GEN") return live;
     if (live.rms > 0.045) return live;
-    var onset = 0;
-    if (Math.sin(t * 1.65) > 0.96 && now - lastDemo > 420) {
-      lastDemo = now;
-      onset = 0.8;
-    }
     return {
-      rms: 0.28,
-      bass: 0.22 + 0.28 * Math.abs(Math.sin(t * 2.05)),
-      mid: 0.12 + 0.12 * Math.sin(t * 0.7 + 1),
-      high: 0.05 + 0.2 * Math.max(0, Math.sin(t * 6.5)),
-      onset: onset
+      rms: 0.2,
+      bass: 0.16 + 0.2 * Math.abs(Math.sin(t * 2.05)),
+      mid: 0.08,
+      high: state.knobs.glitch > 0.55 ? 0.12 + 0.22 * Math.max(0, Math.sin(t * 6.5)) : 0.03,
+      onset: 0
     };
   }
 
@@ -512,10 +513,10 @@ var SPTV = (function () {
     var levels = demoLevels(t, now, live);
     if (state.power && levels.onset > 0.5 && ch.motion !== "snow") burst(ch, 2 + Math.floor(levels.onset * 3));
 
-    var hue = ((levels.mid || 0) * 70 + t * (kn.hueDrift || 0) * 28) % 360;
+    var hue = (t * (kn.hueDrift || 0) * 28) % 360;
     var filter = "none";
     if (kn.mono) filter = "grayscale(1) contrast(1.2)";
-    else if (kn.hueDrift || levels.mid > 0.05) filter = "hue-rotate(" + hue.toFixed(1) + "deg)";
+    else if (kn.hueDrift) filter = "hue-rotate(" + hue.toFixed(1) + "deg)";
     if (kn.crt > 0.6) filter = (filter === "none" ? "" : filter + " ") + "contrast(" + (1.05 + kn.crt * 0.35).toFixed(2) + ") saturate(" + (1 + kn.crt * 0.4).toFixed(2) + ")";
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     sctx.clearRect(0, 0, W, H);
@@ -578,10 +579,12 @@ var SPTV = (function () {
     }
     if ("filter" in sctx) sctx.filter = "none";
 
-    var shakeAmp = (levels.bass || 0) * (ch.audio.bass === "shake" ? 7 : ch.audio.bass === "punch" ? 5 : 2);
+    var shakeAmp = 0;
+    if (ch.audio.bass === "shake") shakeAmp = (levels.bass || 0) * 6;
+    else if (ch.audio.bass === "punch") shakeAmp = (levels.bass || 0) * 5;
     var shakeX = 0;
     var shakeY = 0;
-    if (shakeAmp > 0.8) {
+    if (shakeAmp > 1.2) {
       shakeX = (Math.random() - 0.5) * shakeAmp;
       shakeY = (Math.random() - 0.5) * shakeAmp * 0.6;
     }
