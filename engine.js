@@ -625,15 +625,9 @@ var SPTV = (function () {
     if (!card) return;
     var vw = window.innerWidth || 400;
     var vh = window.innerHeight || 560;
-    if (window.visualViewport) {
-      vw = window.visualViewport.width || vw;
-      vh = window.visualViewport.height || vh;
-    }
-    var padX = 12;
-    var padY = 16;
-    var s = Math.min((vw - padX * 2) / 400, (vh - padY * 2) / 560);
-    if (!isFinite(s) || s < 0.2) s = 1;
-    card.style.transform = "translate(-50%, -50%) scale(" + s.toFixed(4) + ")";
+    var s = Math.min((vw - 16) / 400, (vh - 16) / 560);
+    if (!isFinite(s) || s <= 0) s = 1;
+    card.style.transform = "scale(" + s.toFixed(4) + ")";
   }
 
   function toggleHelp() {
