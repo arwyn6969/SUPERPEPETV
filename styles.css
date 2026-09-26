@@ -103,10 +103,10 @@ html, body {
 
 #screen_wrap {
 	position: absolute;
-	top: 40px;
+	top: 36px;
 	left: 10px;
 	width: 380px;
-	height: 352px;
+	height: 420px;
 	z-index: 1;
 }
 
@@ -246,7 +246,7 @@ body.standby #led {
 
 #deck {
 	position: absolute;
-	top: 400px;
+	top: 462px;
 	left: 8px;
 	width: 384px;
 	display: flex;

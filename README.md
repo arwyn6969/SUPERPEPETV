@@ -62,7 +62,7 @@ npm run hosted
 npx wrangler deploy --config tools/wrangler.toml
 ```
 
-Intended URL: `https://superpepetv.mrarwyn.workers.dev`
+Intended URL: `https://arwyn.party/SUPERPEPETV/`
 
 `tools/worker.js` injects `yt.js` into `index.html`. `npm run zip` does not include that file. A sovereign Tezos FA2 collection is later work, not this version.
 

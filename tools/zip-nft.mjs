@@ -59,7 +59,7 @@ const banned = [
   /new\s+WebSocket/,
 ];
 
-const allowUrl = /https?:\/\/(?:objkt\.com\/create|superpepetv\.mrarwyn\.workers\.dev|github\.com\/|viznut\.fi\/unscii)/i;
+const allowUrl = /https?:\/\/(?:objkt\.com\/create|superpepetv\.mrarwyn\.workers\.dev|arwyn\.party\/SUPERPEPETV|github\.com\/|viznut\.fi\/unscii)/i;
 
 for (const name of names) {
   const text = readFileSync(join(root, name), "utf8");

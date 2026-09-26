@@ -34,6 +34,7 @@ export default {
         html = html.replace("</head>", '<script src="yt.js"></script></head>');
       }
       headers.set("content-type", "text/html; charset=utf-8");
+      headers.set("cache-control", "no-cache");
       headers.delete("content-length");
       return new Response(html, { status: asset.status, headers: headers });
     }

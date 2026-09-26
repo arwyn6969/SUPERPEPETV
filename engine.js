@@ -3,7 +3,7 @@
    Idle motion is time-based so a silent NFT is never a still frame. */
 
 var SPTV = (function () {
-  var HOST_URL = "https://superpepetv.mrarwyn.workers.dev";
+  var HOST_URL = "https://arwyn.party/SUPERPEPETV";
   var W = 360;
   var H = 312;
   var brushes = {};
@@ -623,8 +623,17 @@ var SPTV = (function () {
   function fit() {
     var card = $("card");
     if (!card) return;
-    var s = Math.min(window.innerWidth / 400, window.innerHeight / 560);
-    card.style.transform = "translate(-50%, -50%) scale(" + s + ")";
+    var vw = window.innerWidth || 400;
+    var vh = window.innerHeight || 560;
+    if (window.visualViewport) {
+      vw = window.visualViewport.width || vw;
+      vh = window.visualViewport.height || vh;
+    }
+    var padX = 12;
+    var padY = 16;
+    var s = Math.min((vw - padX * 2) / 400, (vh - padY * 2) / 560);
+    if (!isFinite(s) || s < 0.2) s = 1;
+    card.style.transform = "translate(-50%, -50%) scale(" + s.toFixed(4) + ")";
   }
 
   function toggleHelp() {
@@ -746,6 +755,8 @@ var SPTV = (function () {
     bind();
     fit();
     window.addEventListener("resize", fit);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
+    window.addEventListener("orientationchange", fit);
     updateChrome();
     state.snowUntil = performance.now() + 380;
     preload(function () {
