@@ -119,6 +119,7 @@ var SPTVAudio = (function () {
       try { streamNode.disconnect(); } catch (err) {}
       streamNode = null;
     }
+    el.muted = false;
     var key = el.tagName === "VIDEO" ? "VIDEO" : "AUDIO";
     if (!elementNode[key]) {
       try {

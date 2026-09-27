@@ -24,6 +24,7 @@ var SPTV = (function () {
     stream: null,
     audioEl: null,
     fileUrl: "",
+    fileKind: "",
     snowUntil: 0,
     knobs: null,
     stamps: [],
@@ -210,17 +211,39 @@ var SPTV = (function () {
     video.pause();
     video.srcObject = null;
     video.removeAttribute("src");
+    try { video.load(); } catch (err) {}
   }
 
-  function stopFileAudio() {
+  function pauseFile() {
+    if (state.audioEl) state.audioEl.pause();
+    if (video && state.fileKind === "video") video.pause();
+  }
+
+  function releaseFile() {
+    pauseFile();
     if (state.audioEl) {
-      state.audioEl.pause();
+      state.audioEl.removeAttribute("src");
       state.audioEl = null;
     }
-    if (state.fileUrl) {
-      URL.revokeObjectURL(state.fileUrl);
-      state.fileUrl = "";
+    if (state.fileUrl) URL.revokeObjectURL(state.fileUrl);
+    state.fileUrl = "";
+    state.fileKind = "";
+  }
+
+  function armPlayback(el, ticket) {
+    function go() {
+      if (ticket !== mediaGen || state.source !== "FILE") return;
+      el.loop = true;
+      el.muted = false;
+      if (window.SPTVAudio) SPTVAudio.attachElement(el);
+      var p = el.play();
+      if (p && p.catch) p.catch(function () { feedback("TAP THE SET — SOUND BLOCKED"); });
     }
+    el.preload = "auto";
+    el.loop = false;
+    el.muted = false;
+    if (el.readyState >= 1 && isFinite(el.duration) && el.duration > 0) go();
+    else el.addEventListener("loadedmetadata", go, { once: true });
   }
 
   function beginMedia() {
@@ -237,7 +260,7 @@ var SPTV = (function () {
     beginMedia();
     stopStream();
     clearPicture();
-    stopFileAudio();
+    pauseFile();
     if (window.SPTVYouTube) SPTVYouTube.exit();
     state.source = "GEN";
     if (window.SPTVAudio) SPTVAudio.useGen();
@@ -264,18 +287,31 @@ var SPTV = (function () {
     state.power = !!on;
     if (window.SPTVAudio) SPTVAudio.setMuted(!state.power);
     if (video) {
-      if (!state.power) video.pause();
-      else if ((state.source === "CAM" || state.source === "FILE") && (video.srcObject || video.src)) video.play();
+      if (!state.power) {
+        video.pause();
+        if (state.audioEl) state.audioEl.pause();
+      } else if (state.source === "FILE") {
+        var el = state.fileKind === "audio" ? state.audioEl : video;
+        if (el && el.play) {
+          var again = el.play();
+          if (again && again.catch) again.catch(function () {});
+        }
+      } else if (state.source === "CAM" && video.srcObject) {
+        var camPlay = video.play();
+        if (camPlay && camPlay.catch) camPlay.catch(function () {});
+      }
     }
     updateChrome();
     feedback(state.power ? "POWER ON" : "STANDBY");
   }
 
   function cycleSource() {
-    var list = ["GEN", "CAM", "MIC", "FILE"];
+    var list = ["GEN", "CAM", "MIC"];
+    if (state.fileUrl) list.push("FILE");
     if (window.SPTV_HOSTED) list.push("YT");
     var i = list.indexOf(state.source);
     var next = list[(i + 1) % list.length];
+    if (next === "FILE") return resumeFile();
     setSource(next);
   }
 
@@ -283,11 +319,7 @@ var SPTV = (function () {
     if (src === "GEN") return useGen();
     if (src === "CAM") return startCam();
     if (src === "MIC") return startMic();
-    if (src === "FILE") {
-      var input = $("file_input");
-      if (input) input.click();
-      return;
-    }
+    if (src === "FILE") return resumeFile();
     if (src === "YT") {
       if (!window.SPTV_HOSTED || !window.SPTVYouTube) {
         showNotice("YOUTUBE IS ON THE HOSTED SET ONLY", true);
@@ -301,7 +333,7 @@ var SPTV = (function () {
       beginMedia();
       stopStream();
       clearPicture();
-      stopFileAudio();
+      pauseFile();
       state.source = "YT";
       if (window.SPTVAudio) SPTVAudio.useGen();
       hideNotice();
@@ -334,10 +366,12 @@ var SPTV = (function () {
 
   function armCam(stream, withAudio) {
     stopStream();
-    stopFileAudio();
+    pauseFile();
     if (window.SPTVYouTube) SPTVYouTube.exit();
     state.stream = stream;
     state.source = "CAM";
+    video.pause();
+    video.removeAttribute("src");
     video.srcObject = stream;
     video.muted = true;
     var play = video.play();
@@ -360,7 +394,7 @@ var SPTV = (function () {
       if (ticket !== mediaGen) { dropStream(stream); return; }
       stopStream();
       clearPicture();
-      stopFileAudio();
+      pauseFile();
       if (window.SPTVYouTube) SPTVYouTube.exit();
       state.stream = stream;
       state.source = "MIC";
@@ -373,36 +407,55 @@ var SPTV = (function () {
     });
   }
 
-  function onFile(file) {
-    if (!file) return;
-    beginMedia();
+  function resumeFile() {
+    if (!state.fileUrl) {
+      feedback("NO FILE LOADED");
+      return;
+    }
+    var ticket = beginMedia();
     stopStream();
-    clearPicture();
-    stopFileAudio();
     if (window.SPTVYouTube) SPTVYouTube.exit();
-    var url = URL.createObjectURL(file);
-    state.fileUrl = url;
     state.source = "FILE";
-    var isVideo = file.type.indexOf("video/") === 0 || /\.(mp4|webm|mov|mkv|ogv)$/i.test(file.name);
-    if (isVideo) {
-      video.src = url;
-      video.muted = true;
-      video.loop = true;
-      video.play().then(function () {
-        if (window.SPTVAudio) SPTVAudio.attachElement(video);
-      }, function () { feedback("PRESS PLAY — FILE BLOCKED"); });
-    } else {
-      var audio = new Audio();
-      audio.src = url;
-      audio.loop = true;
-      state.audioEl = audio;
-      audio.play().then(function () {
-        if (window.SPTVAudio) SPTVAudio.attachElement(audio);
-      }, function () { feedback("PRESS A KEY — AUDIO BLOCKED"); });
+    if (state.fileKind === "video") {
+      video.srcObject = null;
+      video.playsInline = true;
+      if (video.src !== state.fileUrl) video.src = state.fileUrl;
+      armPlayback(video, ticket);
+    } else if (state.audioEl) {
+      clearPicture();
+      armPlayback(state.audioEl, ticket);
     }
     hideNotice();
     updateChrome();
     feedback("FILE");
+  }
+
+  function onFile(file) {
+    if (!file) return;
+    releaseFile();
+    var ticket = beginMedia();
+    stopStream();
+    clearPicture();
+    if (window.SPTVYouTube) SPTVYouTube.exit();
+    var url = URL.createObjectURL(file);
+    state.fileUrl = url;
+    state.source = "FILE";
+    var name = file.name || "";
+    var isAudio = file.type.indexOf("audio/") === 0 || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(name);
+    state.fileKind = isAudio ? "audio" : "video";
+    if (!isAudio) {
+      video.playsInline = true;
+      video.src = url;
+      armPlayback(video, ticket);
+    } else {
+      var audio = new Audio();
+      audio.src = url;
+      state.audioEl = audio;
+      armPlayback(audio, ticket);
+    }
+    hideNotice();
+    updateChrome();
+    feedback(isAudio ? "FILE AUDIO" : "FILE VIDEO");
   }
 
   function vary() {
@@ -652,7 +705,10 @@ var SPTV = (function () {
     $("ch_next").addEventListener("click", function () { setChannel(state.channel + 1, true); });
     $("cam_button").addEventListener("click", function () { setSource("CAM"); });
     $("mic_button").addEventListener("click", function () { setSource("MIC"); });
-    $("file_button").addEventListener("click", function () { setSource("FILE"); });
+    $("file_button").addEventListener("click", function () {
+      var input = $("file_input");
+      if (input) input.click();
+    });
     $("rand_button").addEventListener("click", vary);
     $("file_input").addEventListener("change", function (ev) {
       var file = ev.target.files && ev.target.files[0];
