@@ -157,15 +157,28 @@ var SPTV = (function () {
     var bug = $("bug");
     if (bug) bug.textContent = "CH " + ch.id + "\n" + ch.callsign;
     var src = $("src_bug");
-    if (src) src.textContent = state.source;
+    if (src) {
+      src.textContent = state.source === "YT" ? "YOUTUBE" : state.source === "CAM" ? (state.facing === "environment" ? "BACK CAM" : "FRONT CAM") : state.source;
+    }
     var power = $("power_button");
     if (power) power.setAttribute("aria-pressed", state.power ? "true" : "false");
-    ["cam_button", "mic_button", "file_button"].forEach(function (id, i) {
+    var names = { gen_button: "GEN", cam_button: "CAM", mic_button: "MIC", file_button: "FILE", yt_button: "YT" };
+    Object.keys(names).forEach(function (id) {
       var el = $(id);
       if (!el) return;
-      var name = ["CAM", "MIC", "FILE"][i];
-      el.setAttribute("aria-pressed", state.source === name ? "true" : "false");
+      el.setAttribute("aria-pressed", state.source === names[id] ? "true" : "false");
     });
+    var camBtn = $("cam_button");
+    if (camBtn) camBtn.textContent = state.source === "CAM" ? "FLIP" : "CAM";
+    var foot = $("footer_bar");
+    if (foot) {
+      var hint = "GENERATOR IS ON THE GLASS";
+      if (state.source === "CAM") hint = "CAMERA ON. CAM AGAIN FLIPS FRONT / BACK";
+      else if (state.source === "MIC") hint = "MIC DRIVES THE PICTURE. NOT THE SPEAKERS";
+      else if (state.source === "FILE") hint = "CLIP ON. FILE AGAIN PICKS ANOTHER";
+      else if (state.source === "YT") hint = "YOUTUBE ON. YT PASTES ANOTHER LINK";
+      foot.textContent = hint;
+    }
     document.body.classList.toggle("standby", !state.power);
     document.body.classList.toggle("yt", state.source === "YT");
     var open = $("open_app");
@@ -181,7 +194,7 @@ var SPTV = (function () {
       Channel: "CH " + ch.id,
       Callsign: ch.callsign,
       Variation: state.variation,
-      Source: "GEN"
+      Source: state.source
     });
   }
 
@@ -305,17 +318,6 @@ var SPTV = (function () {
     }
     updateChrome();
     feedback(state.power ? "POWER ON" : "STANDBY");
-  }
-
-  function cycleSource() {
-    var list = ["GEN", "CAM", "MIC"];
-    if (state.fileUrl) list.push("FILE");
-    if (window.SPTV_HOSTED) list.push("YT");
-    var i = list.indexOf(state.source);
-    var next = list[(i + 1) % list.length];
-    feedback(next === "GEN" ? "GENERATOR" : next === "CAM" ? "CAMERA" : next === "YT" ? "YOUTUBE" : next);
-    if (next === "FILE") return resumeFile();
-    setSource(next);
   }
 
   function setSource(src) {
@@ -740,8 +742,9 @@ var SPTV = (function () {
 
   function bind() {
     $("power_button").addEventListener("click", function () { setPower(!state.power); });
-    $("source_button").addEventListener("click", cycleSource);
     $("help_button").addEventListener("click", toggleHelp);
+    $("gen_button").addEventListener("click", function () { setSource("GEN"); });
+    $("yt_button").addEventListener("click", function () { setSource("YT"); });
     $("ch_prev").addEventListener("click", function () { setChannel(state.channel - 1, true); });
     $("ch_next").addEventListener("click", function () { setChannel(state.channel + 1, true); });
     $("cam_button").addEventListener("click", function () {
@@ -750,8 +753,12 @@ var SPTV = (function () {
     });
     $("mic_button").addEventListener("click", function () { setSource("MIC"); });
     $("file_button").addEventListener("click", function () {
-      var input = $("file_input");
-      if (input) input.click();
+      if (state.source === "FILE" || !state.fileUrl) {
+        var input = $("file_input");
+        if (input) input.click();
+        return;
+      }
+      resumeFile();
     });
     $("rand_button").addEventListener("click", vary);
     $("file_input").addEventListener("change", function (ev) {

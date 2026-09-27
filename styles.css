@@ -111,7 +111,7 @@ body {
 	top: 36px;
 	left: 10px;
 	width: 380px;
-	height: 420px;
+	height: 384px;
 	z-index: 1;
 }
 
@@ -256,21 +256,44 @@ body.standby #led {
 	margin-bottom: 4px;
 }
 
-#deck {
+#inputs {
 	position: absolute;
-	top: 462px;
+	top: 424px;
 	left: 8px;
 	width: 384px;
 	display: flex;
-	flex-flow: row wrap;
+	flex-flow: row nowrap;
+	align-items: center;
+	z-index: 20;
+	user-select: none;
+}
+
+#input_label {
+	font-family: "unscii8", monospace;
+	font-size: 10px;
+	letter-spacing: -0.5px;
+	margin-right: 2px;
+	flex: none;
+}
+
+#inputs .header_button {
+	flex: 1 1 0;
+}
+
+#deck {
+	position: absolute;
+	top: 456px;
+	left: 8px;
+	width: 384px;
+	display: flex;
+	flex-flow: row nowrap;
 	justify-content: center;
 	z-index: 20;
 	user-select: none;
 }
 
 #deck .header_button {
-	flex: 1 1 22%;
-	max-width: 24%;
+	flex: 1 1 0;
 	font-size: 11px;
 }
 
@@ -417,9 +440,11 @@ body.standby #led {
 .hidden { display: none !important; }
 
 body.hide-ui #header_buttons,
+body.hide-ui #inputs,
 body.hide-ui #deck,
 body.hide-ui #footer_bar,
 body.capture #header,
+body.capture #inputs,
 body.capture #deck,
 body.capture #footer_bar,
 body.capture #notice {
