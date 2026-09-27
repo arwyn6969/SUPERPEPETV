@@ -159,39 +159,36 @@ var SPTVMint = (function () {
 
   var recorder = null;
 
-  function rec(done) {
-    if (recorder) return;
-    var view = SPTV.view();
-    if (!view || !view.captureStream || !window.MediaRecorder) {
-      SPTV.feedback("REC NOT IN THIS BROWSER");
-      return;
-    }
-    var stream = view.captureStream(30);
-    var audio = SPTVAudio && SPTVAudio.recordStream();
-    if (audio) {
-      audio.getAudioTracks().forEach(function (track) { stream.addTrack(track); });
-    }
+  function armRecorder(stream, done, cleanup) {
     var mime = pickMime();
     try {
       recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
     } catch (err) {
       recorder = null;
+      if (cleanup) cleanup();
       SPTV.feedback("REC FAILED");
       return;
     }
     var chunks = [];
     var rec = recorder;
+    var timer = null;
+    function finish() {
+      if (cleanup) cleanup();
+      cleanup = null;
+    }
     rec.ondataavailable = function (ev) {
       if (ev.data && ev.data.size) chunks.push(ev.data);
     };
     rec.onerror = function () {
       clearInterval(timer);
+      finish();
       if (recorder === rec) recorder = null;
       showRec("");
       SPTV.feedback("REC FAILED");
     };
     rec.onstop = function () {
       clearInterval(timer);
+      finish();
       var type = rec.mimeType || mime || "video/webm";
       var ext = type.indexOf("mp4") >= 0 ? "mp4" : "webm";
       if (recorder === rec) recorder = null;
@@ -208,11 +205,15 @@ var SPTVMint = (function () {
         SPTV.feedback("REC SAVED");
       }
     };
+    var videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) videoTrack.addEventListener("ended", function () {
+      if (recorder === rec && recorder.state === "recording") recorder.stop();
+    });
     rec.start();
     var left = 8;
     showRec("REC " + left);
     SPTV.feedback("REC 8s");
-    var timer = setInterval(function () {
+    timer = setInterval(function () {
       left -= 1;
       showRec(left > 0 ? "REC " + left : "SAVING");
       if (left <= 0) {
@@ -220,6 +221,82 @@ var SPTVMint = (function () {
         if (recorder && recorder.state === "recording") recorder.stop();
       }
     }, 1000);
+  }
+
+  function recYouTube(done) {
+    var md = navigator.mediaDevices;
+    if (!md || !md.getDisplayMedia || !window.MediaRecorder) {
+      SPTV.feedback("REC NOT IN THIS BROWSER");
+      return;
+    }
+    SPTV.feedback("SHARE THIS TAB AND ITS AUDIO");
+    md.getDisplayMedia({
+      video: { frameRate: 30 },
+      audio: true,
+      preferCurrentTab: true,
+      selfBrowserSurface: "include",
+      surfaceSwitching: "exclude",
+      monitorTypeSurfaces: "exclude"
+    }).then(function (display) {
+      var screen = $("screen");
+      var box = screen.getBoundingClientRect();
+      var dpr = Math.min(2, window.devicePixelRatio || 1);
+      var cap = document.createElement("canvas");
+      cap.width = Math.max(2, Math.round(box.width * dpr));
+      cap.height = Math.max(2, Math.round(box.height * dpr));
+      var cctx = cap.getContext("2d");
+      var vid = document.createElement("video");
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.srcObject = display;
+      vid.style.cssText = "position:fixed;left:-9999px;width:8px;height:8px";
+      document.body.appendChild(vid);
+      var play = vid.play();
+      if (play && play.catch) play.catch(function () {});
+      var running = true;
+      function paint() {
+        if (!running) return;
+        if (vid.readyState >= 2 && vid.videoWidth) {
+          var now = screen.getBoundingClientRect();
+          var sx = vid.videoWidth / (window.innerWidth || now.width);
+          var sy = vid.videoHeight / (window.innerHeight || now.height);
+          cctx.drawImage(vid, now.left * sx, now.top * sy, Math.max(1, now.width * sx), Math.max(1, now.height * sy), 0, 0, cap.width, cap.height);
+        }
+        requestAnimationFrame(paint);
+      }
+      paint();
+      var stream = cap.captureStream(30);
+      display.getAudioTracks().forEach(function (track) { stream.addTrack(track); });
+      if (!display.getAudioTracks().length) {
+        var status = $("mint_status");
+        if (status) status.textContent = "NO TAB AUDIO. TICK SHARE AUDIO.";
+      }
+      armRecorder(stream, done, function () {
+        running = false;
+        display.getTracks().forEach(function (track) { track.stop(); });
+        vid.srcObject = null;
+        vid.remove();
+      });
+    }, function () {
+      SPTV.feedback("SHARE CANCELLED");
+    });
+  }
+
+  function rec(done) {
+    if (recorder) return;
+    var state = SPTV.getState();
+    if (state && state.source === "YT") return recYouTube(done);
+    var view = SPTV.view();
+    if (!view || !view.captureStream || !window.MediaRecorder) {
+      SPTV.feedback("REC NOT IN THIS BROWSER");
+      return;
+    }
+    var stream = view.captureStream(30);
+    var audio = SPTVAudio && SPTVAudio.recordStream();
+    if (audio) {
+      audio.getAudioTracks().forEach(function (track) { stream.addTrack(track); });
+    }
+    armRecorder(stream, done);
   }
 
   function pack() {

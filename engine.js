@@ -176,7 +176,7 @@ var SPTV = (function () {
       if (state.source === "CAM") hint = "CAMERA ON. CAM AGAIN FLIPS FRONT / BACK";
       else if (state.source === "MIC") hint = "MIC DRIVES THE PICTURE. NOT THE SPEAKERS";
       else if (state.source === "FILE") hint = "CLIP ON. FILE AGAIN PICKS ANOTHER";
-      else if (state.source === "YT") hint = "YOUTUBE ON. YT PASTES ANOTHER LINK";
+      else if (state.source === "YT") hint = "YOUTUBE ON. REC SHARES THIS TAB TO SAVE THE CLIP";
       foot.textContent = hint;
     }
     document.body.classList.toggle("standby", !state.power);
