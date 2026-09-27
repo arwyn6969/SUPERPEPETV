@@ -167,6 +167,7 @@ var SPTV = (function () {
       el.setAttribute("aria-pressed", state.source === name ? "true" : "false");
     });
     document.body.classList.toggle("standby", !state.power);
+    document.body.classList.toggle("yt", state.source === "YT");
     var open = $("open_app");
     if (open) open.href = HOST_URL + "/?ch=" + ch.id;
     if (window.SPTVMint) SPTVMint.refreshCode();
@@ -337,7 +338,7 @@ var SPTV = (function () {
       clearPicture();
       pauseFile();
       state.source = "YT";
-      if (window.SPTVAudio) SPTVAudio.useGen();
+      if (window.SPTVAudio) SPTVAudio.duck();
       hideNotice();
       updateChrome();
       feedback("YOUTUBE");
@@ -599,14 +600,16 @@ var SPTV = (function () {
     sctx.clearRect(0, 0, W, H);
     if ("filter" in sctx && sctx.filter !== filter) sctx.filter = filter;
 
-    if (gradKey !== ch.id) {
-      grad = sctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, ch.bg[0]);
-      grad.addColorStop(1, ch.bg[1]);
-      gradKey = ch.id;
+    if (state.source !== "YT") {
+      if (gradKey !== ch.id) {
+        grad = sctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, ch.bg[0]);
+        grad.addColorStop(1, ch.bg[1]);
+        gradKey = ch.id;
+      }
+      sctx.fillStyle = grad;
+      sctx.fillRect(0, 0, W, H);
     }
-    sctx.fillStyle = grad;
-    sctx.fillRect(0, 0, W, H);
     var sweep = ((t * 36) % (H + 30)) - 15;
     sctx.fillStyle = "rgba(190,255,170,0.045)";
     sctx.fillRect(0, sweep, W, 16);
@@ -630,7 +633,7 @@ var SPTV = (function () {
       sctx.restore();
     }
 
-    if (ch.motion === "snow") drawSnow(0.88);
+    if (ch.motion === "snow") drawSnow(state.source === "YT" ? 0.35 : 0.88);
     if (now < state.snowUntil) {
       drawSnow(1);
       var u = (state.snowUntil - now) / 420;
@@ -638,7 +641,7 @@ var SPTV = (function () {
         sctx.fillStyle = "rgba(255,255,255," + ((u - 0.72) / 0.28) + ")";
         sctx.fillRect(0, 0, W, H);
       }
-    } else if (state.source !== "YT") {
+    } else {
       sctx.imageSmoothingEnabled = false;
       var kept = [];
       var dropped = false;
@@ -670,6 +673,16 @@ var SPTV = (function () {
       shakeY = (Math.random() - 0.5) * shakeAmp * 0.6;
     }
     var glitch = Math.max(kn.glitch * 0.15, (levels.high || 0) * kn.glitch);
+    if (state.source === "YT" && window.SPTVYouTube && SPTVYouTube.look) {
+      SPTVYouTube.look({
+        t: t,
+        filter: filter,
+        wave: kn.wave,
+        glitch: glitch,
+        shakeX: shakeX,
+        shakeY: shakeY
+      });
+    }
     SPTVEffects.composite(ctx, scene, {
       t: t,
       frame: frame,
@@ -823,13 +836,13 @@ var SPTV = (function () {
 
   function start() {
     view = $("view");
-    ctx = view.getContext("2d", { alpha: false });
+    ctx = view.getContext("2d", { alpha: true });
     view.width = W;
     view.height = H;
     scene = document.createElement("canvas");
     scene.width = W;
     scene.height = H;
-    sctx = scene.getContext("2d", { alpha: false });
+    sctx = scene.getContext("2d", { alpha: true });
     video = $("cam");
     state.seed = bootSeed();
     state.variation = hash32(state.seed + "|var") & 0xffff;

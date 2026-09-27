@@ -115,6 +115,15 @@ var SPTVAudio = (function () {
     setGen(false);
   }
 
+  function duck() {
+    if (streamNode) {
+      try { streamNode.disconnect(); } catch (err) {}
+      streamNode = null;
+    }
+    silenceElements();
+    setGen(false);
+  }
+
   function useGen() {
     if (streamNode) {
       try { streamNode.disconnect(); } catch (err) {}
@@ -164,6 +173,7 @@ var SPTVAudio = (function () {
     unlock: unlock,
     levels: levels,
     useGen: useGen,
+    duck: duck,
     attachStream: attachStream,
     attachElement: attachElement,
     setMuted: setMuted,
