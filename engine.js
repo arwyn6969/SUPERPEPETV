@@ -25,6 +25,7 @@ var SPTV = (function () {
     audioEl: null,
     fileUrl: "",
     fileKind: "",
+    facing: "user",
     snowUntil: 0,
     knobs: null,
     stamps: [],
@@ -342,24 +343,34 @@ var SPTV = (function () {
     }
   }
 
+  function camLabel() {
+    return state.facing === "environment" ? "BACK CAM" : "FRONT CAM";
+  }
+
   function startCam() {
     var md = navigator.mediaDevices;
     if (!md || !md.getUserMedia || !window.isSecureContext) {
       failSoft("CAMERA BLOCKED");
       return;
     }
+    var facing = state.facing === "environment" ? "environment" : "user";
     var ticket = beginMedia();
-    md.getUserMedia({ video: { facingMode: "user" }, audio: true }).then(function (stream) {
-      if (ticket !== mediaGen) { dropStream(stream); return; }
-      armCam(stream, true);
-    }, function () {
-      if (ticket !== mediaGen) return;
-      md.getUserMedia({ video: true, audio: false }).then(function (stream) {
-        if (ticket !== mediaGen) { dropStream(stream); return; }
-        armCam(stream, false);
-        feedback("CAM ON  MIC OFF");
-      }, function () {
-        if (ticket === mediaGen) failSoft("CAMERA BLOCKED");
+    function take(videoMode, audio) {
+      return md.getUserMedia({ video: videoMode, audio: audio }).then(function (stream) {
+        if (ticket !== mediaGen) { dropStream(stream); return false; }
+        armCam(stream, audio);
+        if (!audio) feedback(camLabel() + "  MIC OFF");
+        return true;
+      }, function () { return false; });
+    }
+    take({ facingMode: { exact: facing } }, true).then(function (ok) {
+      if (ok || ticket !== mediaGen) return;
+      take({ facingMode: { exact: facing } }, false).then(function (ok2) {
+        if (ok2 || ticket !== mediaGen) return;
+        take({ facingMode: facing }, false).then(function (ok3) {
+          if (ok3 || ticket !== mediaGen) return;
+          failSoft("CAMERA BLOCKED");
+        });
       });
     });
   }
@@ -380,7 +391,7 @@ var SPTV = (function () {
     else if (window.SPTVAudio) SPTVAudio.useGen();
     hideNotice();
     updateChrome();
-    feedback("CAMERA");
+    feedback(camLabel());
   }
 
   function startMic() {
@@ -598,6 +609,10 @@ var SPTV = (function () {
       sctx.beginPath();
       sctx.ellipse(W / 2, H / 2, W * 0.46, H * 0.46, 0, 0, Math.PI * 2);
       sctx.clip();
+      if (state.source === "CAM" && state.facing !== "environment") {
+        sctx.translate(W, 0);
+        sctx.scale(-1, 1);
+      }
       sctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
       sctx.restore();
     }
@@ -703,7 +718,10 @@ var SPTV = (function () {
     $("help_button").addEventListener("click", toggleHelp);
     $("ch_prev").addEventListener("click", function () { setChannel(state.channel - 1, true); });
     $("ch_next").addEventListener("click", function () { setChannel(state.channel + 1, true); });
-    $("cam_button").addEventListener("click", function () { setSource("CAM"); });
+    $("cam_button").addEventListener("click", function () {
+      if (state.source === "CAM") state.facing = state.facing === "environment" ? "user" : "environment";
+      startCam();
+    });
     $("mic_button").addEventListener("click", function () { setSource("MIC"); });
     $("file_button").addEventListener("click", function () {
       var input = $("file_input");
