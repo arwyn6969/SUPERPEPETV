@@ -9,6 +9,7 @@ var SPTVAudio = (function () {
   var genGain = null;
   var recNode = null;
   var streamNode = null;
+  var micOn = false;
   var elementGain = { VIDEO: null, AUDIO: null };
   var elementNode = { VIDEO: null, AUDIO: null };
   var prevBass = 0;
@@ -74,29 +75,40 @@ var SPTVAudio = (function () {
     if (elementGain.AUDIO) elementGain.AUDIO.gain.value = 0;
   }
 
+  function setAnalyserFromMic(on) {
+    if (!master || !analyser) return;
+    try { master.disconnect(analyser); } catch (err) {}
+    if (!on) master.connect(analyser);
+  }
+
+  function clearMic() {
+    if (streamNode) {
+      try { streamNode.disconnect(); } catch (err) {}
+      streamNode = null;
+    }
+    micOn = false;
+    setAnalyserFromMic(false);
+  }
+
   function attachStream(stream) {
     if (!ensure()) return;
     unlock();
-    if (streamNode) {
-      try { streamNode.disconnect(); } catch (err) {}
-    }
-    silenceElements();
+    clearMic();
     try {
       streamNode = ctx.createMediaStreamSource(stream);
       streamNode.connect(analyser);
+      if (recNode) streamNode.connect(recNode);
+      micOn = true;
+      setAnalyserFromMic(true);
       setGen(false);
     } catch (err) {
-      setGen(true);
+      clearMic();
     }
   }
 
   function attachElement(el) {
     if (!ensure() || !el) return;
     unlock();
-    if (streamNode) {
-      try { streamNode.disconnect(); } catch (err) {}
-      streamNode = null;
-    }
     el.muted = false;
     var key = el.tagName === "VIDEO" ? "VIDEO" : "AUDIO";
     if (!elementNode[key]) {
@@ -112,25 +124,17 @@ var SPTVAudio = (function () {
     }
     silenceElements();
     if (elementGain[key]) elementGain[key].gain.value = 1;
-    setGen(false);
+    if (!micOn) setGen(false);
   }
 
   function duck() {
-    if (streamNode) {
-      try { streamNode.disconnect(); } catch (err) {}
-      streamNode = null;
-    }
     silenceElements();
     setGen(false);
   }
 
   function useGen() {
-    if (streamNode) {
-      try { streamNode.disconnect(); } catch (err) {}
-      streamNode = null;
-    }
     silenceElements();
-    setGen(true);
+    setGen(!micOn);
   }
 
   function band(a, b) {
@@ -176,6 +180,7 @@ var SPTVAudio = (function () {
     duck: duck,
     attachStream: attachStream,
     attachElement: attachElement,
+    clearMic: clearMic,
     setMuted: setMuted,
     recordStream: recordStream
   };

@@ -267,6 +267,9 @@ var SPTVMint = (function () {
       paint();
       var stream = cap.captureStream(30);
       display.getAudioTracks().forEach(function (track) { stream.addTrack(track); });
+      var state = SPTV.getState();
+      var micMix = state && state.micOn && SPTVAudio && SPTVAudio.recordStream();
+      if (micMix) micMix.getAudioTracks().forEach(function (track) { stream.addTrack(track); });
       if (!display.getAudioTracks().length) {
         var status = $("mint_status");
         if (status) status.textContent = "NO TAB AUDIO. TICK SHARE AUDIO.";

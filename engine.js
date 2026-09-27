@@ -10,7 +10,8 @@ var SPTV = (function () {
   var view, ctx, scene, sctx, video;
   var frame = 0;
   var t0 = 0;
-  var mediaGen = 0;
+  var pictureGen = 0;
+  var micGen = 0;
   var gradKey = "";
   var grad = null;
   var standbyDrawn = false;
@@ -21,7 +22,9 @@ var SPTV = (function () {
     seed: "0000000000000000",
     source: "GEN",
     power: true,
-    stream: null,
+    camStream: null,
+    micStream: null,
+    micOn: false,
     audioEl: null,
     fileUrl: "",
     fileKind: "",
@@ -160,25 +163,32 @@ var SPTV = (function () {
     if (bug) bug.textContent = "CH " + ch.id + "\n" + ch.callsign;
     var src = $("src_bug");
     if (src) {
-      src.textContent = state.source === "YT" ? "YOUTUBE" : state.source === "CAM" ? (state.facing === "environment" ? "BACK CAM" : "FRONT CAM") : state.source;
+      var picture = state.source === "YT" ? "YOUTUBE" : state.source === "CAM" ? (state.facing === "environment" ? "BACK CAM" : "FRONT CAM") : state.source;
+      src.textContent = state.micOn ? picture + " + MIC" : picture;
     }
     var power = $("power_button");
     if (power) power.setAttribute("aria-pressed", state.power ? "true" : "false");
-    var names = { gen_button: "GEN", cam_button: "CAM", mic_button: "MIC", file_button: "FILE", yt_button: "YT" };
+    var names = { gen_button: "GEN", cam_button: "CAM", file_button: "FILE", yt_button: "YT" };
     Object.keys(names).forEach(function (id) {
       var el = $(id);
       if (!el) return;
       el.setAttribute("aria-pressed", state.source === names[id] ? "true" : "false");
     });
+    var micBtn = $("mic_button");
+    if (micBtn) micBtn.setAttribute("aria-pressed", state.micOn ? "true" : "false");
     var camBtn = $("cam_button");
     if (camBtn) camBtn.textContent = state.source === "CAM" ? "FLIP" : "CAM";
     var foot = $("footer_bar");
     if (foot) {
       var hint = "GENERATOR IS ON THE GLASS";
       if (state.source === "CAM") hint = "CAMERA ON. CAM AGAIN FLIPS FRONT / BACK";
-      else if (state.source === "MIC") hint = "MIC ON" + (state.micLabel ? " — " + state.micLabel : "") + ". MIC AGAIN TRIES THE NEXT ONE";
       else if (state.source === "FILE") hint = "CLIP ON. FILE AGAIN PICKS ANOTHER";
       else if (state.source === "YT") hint = "YOUTUBE ON. REC SHARES THIS TAB TO SAVE THE CLIP";
+      if (state.micOn) {
+        var name = state.micLabel || "ON";
+        if (name.length > 24) name = name.slice(0, 22);
+        hint += " · MIC " + name;
+      }
       foot.textContent = hint;
     }
     document.body.classList.toggle("standby", !state.power);
@@ -196,7 +206,7 @@ var SPTV = (function () {
       Channel: "CH " + ch.id,
       Callsign: ch.callsign,
       Variation: state.variation,
-      Source: state.source
+      Source: state.source + (state.micOn ? "+MIC" : "")
     });
   }
 
@@ -216,12 +226,37 @@ var SPTV = (function () {
     if (box) box.classList.add("hidden");
   }
 
-  function stopStream() {
-    if (window.SPTVAudio) SPTVAudio.useGen();
-    if (state.stream) {
-      state.stream.getTracks().forEach(function (t) { t.stop(); });
-      state.stream = null;
+  function stopCam() {
+    if (state.camStream) {
+      dropStream(state.camStream);
+      state.camStream = null;
     }
+  }
+
+  function restorePictureAudio() {
+    if (!window.SPTVAudio) return;
+    if (state.source === "FILE") {
+      var el = state.fileKind === "audio" ? state.audioEl : video;
+      if (el) SPTVAudio.attachElement(el);
+      return;
+    }
+    if (state.source === "YT") {
+      SPTVAudio.duck();
+      return;
+    }
+    SPTVAudio.useGen();
+  }
+
+  function stopMic() {
+    if (state.micStream) {
+      dropStream(state.micStream);
+      state.micStream = null;
+    }
+    state.micOn = false;
+    state.micLabel = "";
+    if (window.SPTVAudio) SPTVAudio.clearMic();
+    restorePictureAudio();
+    updateChrome();
   }
 
   function mediaWhy(err, kind) {
@@ -279,7 +314,7 @@ var SPTV = (function () {
 
   function armPlayback(el, ticket) {
     function go() {
-      if (ticket !== mediaGen || state.source !== "FILE") return;
+      if (ticket !== pictureGen || state.source !== "FILE") return;
       el.loop = true;
       el.muted = false;
       if (window.SPTVAudio) SPTVAudio.attachElement(el);
@@ -293,9 +328,14 @@ var SPTV = (function () {
     else el.addEventListener("loadedmetadata", go, { once: true });
   }
 
-  function beginMedia() {
-    mediaGen += 1;
-    return mediaGen;
+  function beginPicture() {
+    pictureGen += 1;
+    return pictureGen;
+  }
+
+  function beginMic() {
+    micGen += 1;
+    return micGen;
   }
 
   function dropStream(stream) {
@@ -304,8 +344,8 @@ var SPTV = (function () {
   }
 
   function useGen() {
-    beginMedia();
-    stopStream();
+    beginPicture();
+    stopCam();
     clearPicture();
     pauseFile();
     if (window.SPTVYouTube) SPTVYouTube.exit();
@@ -315,9 +355,23 @@ var SPTV = (function () {
     updateChrome();
   }
 
-  function failSoft(msg) {
+  function failCam(msg) {
     useGen();
     showNotice(msg + " — STAYING ON GEN", true);
+    feedback(msg);
+  }
+
+  function failMic(msg) {
+    if (state.micStream) {
+      dropStream(state.micStream);
+      state.micStream = null;
+    }
+    state.micOn = false;
+    state.micLabel = "";
+    if (window.SPTVAudio) SPTVAudio.clearMic();
+    restorePictureAudio();
+    showNotice(msg, false);
+    updateChrome();
     feedback(msg);
   }
 
@@ -355,7 +409,6 @@ var SPTV = (function () {
   function setSource(src) {
     if (src === "GEN") return useGen();
     if (src === "CAM") return startCam();
-    if (src === "MIC") return startMic(false);
     if (src === "FILE") return resumeFile();
     if (src === "YT") {
       if (!window.SPTV_HOSTED || !window.SPTVYouTube) {
@@ -367,8 +420,8 @@ var SPTV = (function () {
         feedback("YT CANCELLED");
         return;
       }
-      beginMedia();
-      stopStream();
+      beginPicture();
+      stopCam();
       clearPicture();
       pauseFile();
       state.source = "YT";
@@ -380,7 +433,7 @@ var SPTV = (function () {
   }
 
   function camLabel() {
-    var track = state.stream && state.stream.getVideoTracks && state.stream.getVideoTracks()[0];
+    var track = state.camStream && state.camStream.getVideoTracks && state.camStream.getVideoTracks()[0];
     var settings = track && track.getSettings ? track.getSettings() : {};
     if (settings.facingMode === "environment") return "BACK CAM";
     if (settings.facingMode === "user") return "FRONT CAM";
@@ -390,42 +443,40 @@ var SPTV = (function () {
   function startCam() {
     var md = navigator.mediaDevices;
     if (!md || !md.getUserMedia || !window.isSecureContext) {
-      failSoft("CAMERA NEEDS HTTPS IN CHROME");
+      failCam("CAMERA NEEDS HTTPS IN CHROME");
       return;
     }
     var facing = state.facing === "environment" ? "environment" : "user";
-    var ticket = beginMedia();
-    stopStream();
+    var ticket = beginPicture();
+    stopCam();
+    if (video && video.srcObject) video.srcObject = null;
     state.source = "CAM";
     updateChrome();
     feedback("CAMERA…");
     var tries = [
-      [{ facingMode: { ideal: facing } }, true],
-      [{ facingMode: { exact: facing } }, false],
-      [true, false]
+      { facingMode: { ideal: facing } },
+      { facingMode: { exact: facing } },
+      true
     ];
     function next(i, lastErr) {
-      if (ticket !== mediaGen) return;
+      if (ticket !== pictureGen) return;
       if (i >= tries.length) {
-        failSoft(mediaWhy(lastErr, "CAMERA"));
+        failCam(mediaWhy(lastErr, "CAMERA"));
         return;
       }
-      var mode = tries[i][0];
-      var audio = tries[i][1];
-      md.getUserMedia({ video: mode, audio: audio }).then(function (stream) {
-        if (ticket !== mediaGen) { dropStream(stream); return; }
-        armCam(stream, audio);
-        if (!audio) feedback(camLabel() + "  MIC OFF");
+      md.getUserMedia({ video: tries[i], audio: false }).then(function (stream) {
+        if (ticket !== pictureGen) { dropStream(stream); return; }
+        armCam(stream);
       }, function (err) { next(i + 1, err); });
     }
     next(0, null);
   }
 
-  function armCam(stream, withAudio) {
-    stopStream();
+  function armCam(stream) {
+    stopCam();
     pauseFile();
     if (window.SPTVYouTube) SPTVYouTube.exit();
-    state.stream = stream;
+    state.camStream = stream;
     state.source = "CAM";
     video.pause();
     video.removeAttribute("src");
@@ -433,23 +484,39 @@ var SPTV = (function () {
     video.muted = true;
     var play = video.play();
     if (play && play.catch) play.catch(function () {});
-    if (withAudio && window.SPTVAudio) SPTVAudio.attachStream(stream);
-    else if (window.SPTVAudio) SPTVAudio.useGen();
+    if (window.SPTVAudio && !state.micOn) SPTVAudio.useGen();
     hideNotice();
     updateChrome();
     feedback(camLabel());
   }
 
-  function startMic(cycle) {
+  function finishMic(stream, label, ticket) {
+    if (ticket !== micGen) { dropStream(stream); return; }
+    if (state.micStream) dropStream(state.micStream);
+    state.micStream = stream;
+    state.micOn = true;
+    var track = stream.getAudioTracks()[0];
+    var settings = track && track.getSettings ? track.getSettings() : {};
+    state.micId = settings.deviceId || state.micId || "";
+    state.micLabel = (track && track.label) || label || "MIC";
+    if (window.SPTVAudio) SPTVAudio.attachStream(stream);
+    hideNotice();
+    updateChrome();
+    feedback(state.micLabel);
+  }
+
+  function startMic() {
     var md = navigator.mediaDevices;
     if (!md || !md.getUserMedia || !window.isSecureContext) {
-      failSoft("MIC NEEDS HTTPS IN CHROME");
+      failMic("MIC NEEDS HTTPS IN CHROME");
       return;
     }
-    var ticket = beginMedia();
-    var prevId = state.micId;
-    stopStream();
-    state.source = "MIC";
+    if (state.micOn) {
+      stopMic();
+      feedback("MIC OFF");
+      return;
+    }
+    var ticket = beginMic();
     updateChrome();
     feedback("MIC…");
 
@@ -457,68 +524,57 @@ var SPTV = (function () {
       return md.getUserMedia({ audio: audio, video: false });
     }
 
-    function arm(stream, label) {
-      if (ticket !== mediaGen) { dropStream(stream); return; }
-      pauseFile();
-      clearPicture();
-      if (window.SPTVYouTube) SPTVYouTube.exit();
-      state.stream = stream;
-      state.source = "MIC";
-      var track = stream.getAudioTracks()[0];
-      var settings = track && track.getSettings ? track.getSettings() : {};
-      state.micId = settings.deviceId || "";
-      state.micLabel = (track && track.label) || label || "MIC";
-      if (window.SPTVAudio) SPTVAudio.attachStream(stream);
-      hideNotice();
-      updateChrome();
-      feedback(state.micLabel);
-    }
-
     function giveUp(err) {
-      if (ticket === mediaGen) failSoft(mediaWhy(err, "MIC"));
+      if (ticket === micGen) failMic(mediaWhy(err, "MIC"));
     }
 
-    function tryList(devices, err) {
-      var ordered = devices.slice().sort(function (a, b) { return micRank(a.label) - micRank(b.label); });
-      var i = 0;
-      function step() {
-        if (ticket !== mediaGen) return;
-        if (i >= ordered.length) { giveUp(err); return; }
-        var dev = ordered[i++];
-        open({ deviceId: { exact: dev.deviceId } }).then(function (stream) {
-          arm(stream, dev.label);
-        }, step);
-      }
-      step();
-    }
-
-    if (cycle) {
+    function tryHardware(err) {
       audioInputs().then(function (devices) {
-        if (ticket !== mediaGen) return;
-        if (devices.length < 2) {
-          open(true).then(function (stream) { arm(stream); }, giveUp);
-          return;
+        if (ticket !== micGen) return;
+        var real = devices.filter(function (d) { return micRank(d.label) < 2; });
+        real.sort(function (a, b) { return micRank(a.label) - micRank(b.label); });
+        var i = 0;
+        function step() {
+          if (ticket !== micGen) return;
+          if (i >= real.length) { giveUp(err); return; }
+          var dev = real[i++];
+          open({ deviceId: { exact: dev.deviceId } }).then(function (stream) {
+            finishMic(stream, dev.label, ticket);
+          }, step);
         }
-        var at = -1;
-        for (var i = 0; i < devices.length; i++) if (devices[i].deviceId === prevId) at = i;
-        var dev = devices[(at + 1) % devices.length];
-        open({ deviceId: { exact: dev.deviceId } }).then(function (stream) {
-          arm(stream, dev.label);
-        }, function (err) { tryList(devices, err); });
+        if (!real.length) giveUp(err);
+        else step();
       });
-      return;
     }
 
     open(true).then(function (stream) {
-      arm(stream);
-    }, function (err) {
-      if (ticket !== mediaGen) return;
-      var busy = err && (err.name === "NotReadableError" || err.name === "AbortError" || err.name === "OverconstrainedError");
-      if (!busy) { giveUp(err); return; }
+      if (ticket !== micGen) { dropStream(stream); return; }
+      var track = stream.getAudioTracks()[0];
+      var label = (track && track.label) || "";
+      if (!label || micRank(label) < 2) {
+        finishMic(stream, label, ticket);
+        return;
+      }
       audioInputs().then(function (devices) {
-        if (!devices.length) giveUp(err);
-        else tryList(devices, err);
+        if (ticket !== micGen) { dropStream(stream); return; }
+        var real = devices.filter(function (d) { return micRank(d.label) < 2; });
+        if (!real.length) {
+          finishMic(stream, label, ticket);
+          return;
+        }
+        real.sort(function (a, b) { return micRank(a.label) - micRank(b.label); });
+        open({ deviceId: { exact: real[0].deviceId } }).then(function (next) {
+          dropStream(stream);
+          finishMic(next, real[0].label, ticket);
+        }, function () {
+          finishMic(stream, label, ticket);
+        });
       });
+    }, function (err) {
+      if (ticket !== micGen) return;
+      var busy = err && (err.name === "NotReadableError" || err.name === "AbortError" || err.name === "OverconstrainedError");
+      if (busy) tryHardware(err);
+      else giveUp(err);
     });
   }
 
@@ -527,8 +583,8 @@ var SPTV = (function () {
       feedback("NO FILE LOADED");
       return;
     }
-    var ticket = beginMedia();
-    stopStream();
+    var ticket = beginPicture();
+    stopCam();
     if (window.SPTVYouTube) SPTVYouTube.exit();
     state.source = "FILE";
     if (state.fileKind === "video") {
@@ -548,8 +604,8 @@ var SPTV = (function () {
   function onFile(file) {
     if (!file) return;
     releaseFile();
-    var ticket = beginMedia();
-    stopStream();
+    var ticket = beginPicture();
+    stopCam();
     clearPicture();
     if (window.SPTVYouTube) SPTVYouTube.exit();
     var url = URL.createObjectURL(file);
@@ -839,9 +895,7 @@ var SPTV = (function () {
       if (state.source === "CAM") state.facing = state.facing === "environment" ? "user" : "environment";
       startCam();
     });
-    $("mic_button").addEventListener("click", function () {
-      startMic(state.source === "MIC");
-    });
+    $("mic_button").addEventListener("click", function () { startMic(); });
     $("file_button").addEventListener("click", function () {
       if (state.source === "FILE" || !state.fileUrl) {
         var input = $("file_input");
@@ -868,7 +922,7 @@ var SPTV = (function () {
     document.addEventListener("pointerdown", function () {
       if (!window.SPTVAudio) return;
       SPTVAudio.unlock();
-      if (state.source === "GEN" && state.power) SPTVAudio.useGen();
+      if (state.source === "GEN" && state.power && !state.micOn) SPTVAudio.useGen();
     }, { once: false });
 
     document.addEventListener("keydown", function (ev) {
@@ -914,6 +968,7 @@ var SPTV = (function () {
       callsign: ch.callsign,
       variation: state.variation,
       source: state.source,
+      micOn: state.micOn,
       power: state.power
     };
   }
