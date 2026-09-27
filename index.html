@@ -28,6 +28,7 @@
 						<div id="bug">CH 07
 STATIC KEK</div>
 						<div id="src_bug">GEN</div>
+						<div id="rec_bug"></div>
 						<div id="vu" aria-hidden="true"><span id="vu_b"></span><span id="vu_m"></span><span id="vu_h"></span></div>
 						<div id="power_cover"></div>
 						<div id="notice" class="hidden">
@@ -60,7 +61,7 @@ STATIC KEK</div>
 				<div class="info_row">&nbsp;</div>
 				<div class="info_row">1-8 JUMP &nbsp; 0 SNOW &nbsp; LEFT/RIGHT = CH</div>
 				<div class="info_row">H HIDE CONTROLS &nbsp; ? THIS PANEL</div>
-				<div class="info_row">S SNAP PNG &nbsp; V OR D MINT</div>
+				<div class="info_row">MINT PACKS A ZIP WHILE THE GLASS STAYS LIVE</div>
 				<div class="info_row">SOURCE CYCLES INPUTS. FILE LOADS A CLIP.</div>
 				<div class="info_row">CAM AGAIN FLIPS FRONT AND BACK</div>
 				<div class="info_row">DROP A VIDEO OR AUDIO FILE ON THE SET</div>
@@ -83,29 +84,18 @@ STATIC KEK</div>
 						<div id="mint_title">MINT</div>
 						<button type="button" class="header_button" id="mint_close">X</button>
 					</div>
-					<div class="mint_step">1. COVER STILL</div>
+					<div class="mint_info">WATCH THE GLASS. PACK SAVES A COVER, AN 8s CLIP, AND THE CODE, THEN OPENS OBJKT.</div>
 					<div class="mint_row">
-						<button type="button" class="header_button" id="mint_snap">SNAP PNG</button>
-					</div>
-					<div class="mint_step">2. SHORT CLIP (~8s)</div>
-					<div class="mint_row">
+						<button type="button" class="header_button" id="mint_pack">PACK</button>
+						<button type="button" class="header_button" id="mint_snap">SNAP</button>
 						<button type="button" class="header_button" id="mint_rec">REC</button>
 						<span id="record_status" class="mint_hint"></span>
 					</div>
-					<div class="mint_step">3. METADATA JSON</div>
-					<div class="mint_row">
-						<button type="button" class="header_button" id="meta_button">METADATA</button>
-					</div>
-					<div class="mint_step">4. OBJKT INTERACTIVE ZIP</div>
-					<div class="mint_info">UPLOAD THE ZIP FROM npm run zip AS THE ARTEFACT. COVER PNG + OPTIONAL REC. PASTE THE SPTV1 CODE INTO THE DESCRIPTION. OBJKT ONLY. NO FXHASH.</div>
-					<div class="mint_row">
-						<a class="header_button" id="objkt_link" href="https://objkt.com/create" target="_blank" rel="noopener noreferrer">OPEN OBJKT</a>
-					</div>
-					<div class="mint_step">SPTV1 CODE</div>
 					<textarea id="code_area" rows="2" spellcheck="false" autocomplete="off"></textarea>
 					<div class="mint_row">
 						<button type="button" class="header_button" id="code_copy">COPY</button>
 						<button type="button" class="header_button" id="code_import">IMPORT</button>
+						<a class="header_button" id="objkt_link" href="https://objkt.com/create" target="_blank" rel="noopener noreferrer">OBJKT</a>
 					</div>
 					<div id="mint_status" class="mint_status">&nbsp;</div>
 				</div>

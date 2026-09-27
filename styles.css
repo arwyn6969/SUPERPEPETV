@@ -308,21 +308,36 @@ body.standby #led {
 	margin-bottom: 4px;
 }
 
+#rec_bug {
+	position: absolute;
+	top: 6px;
+	right: 8px;
+	z-index: 4;
+	pointer-events: none;
+	color: #ff5a5a;
+	text-shadow: 0 0 4px #ff2020;
+	font-family: "unscii8", monospace;
+	font-size: 12px;
+}
+
 .mint_panel {
 	position: absolute;
-	inset: 0;
+	left: 0;
+	right: 0;
+	top: 456px;
+	bottom: 0;
 	background: #ffffff;
 	z-index: 40;
-	padding: 14px 16px;
+	padding: 6px 8px 4px;
+	overflow: auto;
 }
 
 .mint_form {
 	display: flex;
 	flex-flow: column nowrap;
-	gap: 6px;
+	gap: 4px;
 	border: 1px solid green;
-	padding: 10px 12px;
-	height: 100%;
+	padding: 6px 8px;
 }
 
 .mint_form_header {
@@ -358,7 +373,7 @@ body.standby #led {
 
 #code_area {
 	width: 100%;
-	height: 48px;
+	height: 28px;
 	font-family: "unscii8", monospace;
 	font-size: 11px;
 	background: #ffffff;

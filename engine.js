@@ -312,6 +312,7 @@ var SPTV = (function () {
     if (window.SPTV_HOSTED) list.push("YT");
     var i = list.indexOf(state.source);
     var next = list[(i + 1) % list.length];
+    feedback(next === "GEN" ? "GENERATOR" : next === "CAM" ? "CAMERA" : next === "YT" ? "YOUTUBE" : next);
     if (next === "FILE") return resumeFile();
     setSource(next);
   }
@@ -344,7 +345,11 @@ var SPTV = (function () {
   }
 
   function camLabel() {
-    return state.facing === "environment" ? "BACK CAM" : "FRONT CAM";
+    var track = state.stream && state.stream.getVideoTracks && state.stream.getVideoTracks()[0];
+    var settings = track && track.getSettings ? track.getSettings() : {};
+    if (settings.facingMode === "environment") return "BACK CAM";
+    if (settings.facingMode === "user") return "FRONT CAM";
+    return "CAMERA";
   }
 
   function startCam() {
@@ -355,24 +360,29 @@ var SPTV = (function () {
     }
     var facing = state.facing === "environment" ? "environment" : "user";
     var ticket = beginMedia();
-    function take(videoMode, audio) {
-      return md.getUserMedia({ video: videoMode, audio: audio }).then(function (stream) {
-        if (ticket !== mediaGen) { dropStream(stream); return false; }
+    state.source = "CAM";
+    updateChrome();
+    feedback("CAMERA…");
+    var tries = [
+      [{ facingMode: { ideal: facing } }, true],
+      [{ facingMode: { exact: facing } }, false],
+      [true, false]
+    ];
+    function next(i) {
+      if (ticket !== mediaGen) return;
+      if (i >= tries.length) {
+        failSoft("CAMERA BLOCKED");
+        return;
+      }
+      var mode = tries[i][0];
+      var audio = tries[i][1];
+      md.getUserMedia({ video: mode, audio: audio }).then(function (stream) {
+        if (ticket !== mediaGen) { dropStream(stream); return; }
         armCam(stream, audio);
         if (!audio) feedback(camLabel() + "  MIC OFF");
-        return true;
-      }, function () { return false; });
+      }, function () { next(i + 1); });
     }
-    take({ facingMode: { exact: facing } }, true).then(function (ok) {
-      if (ok || ticket !== mediaGen) return;
-      take({ facingMode: { exact: facing } }, false).then(function (ok2) {
-        if (ok2 || ticket !== mediaGen) return;
-        take({ facingMode: facing }, false).then(function (ok3) {
-          if (ok3 || ticket !== mediaGen) return;
-          failSoft("CAMERA BLOCKED");
-        });
-      });
-    });
+    next(0);
   }
 
   function armCam(stream, withAudio) {
@@ -401,6 +411,9 @@ var SPTV = (function () {
       return;
     }
     var ticket = beginMedia();
+    state.source = "MIC";
+    updateChrome();
+    feedback("MIC…");
     md.getUserMedia({ audio: true, video: false }).then(function (stream) {
       if (ticket !== mediaGen) { dropStream(stream); return; }
       stopStream();
@@ -743,7 +756,9 @@ var SPTV = (function () {
     });
 
     document.addEventListener("pointerdown", function () {
-      if (window.SPTVAudio) SPTVAudio.unlock();
+      if (!window.SPTVAudio) return;
+      SPTVAudio.unlock();
+      if (state.source === "GEN" && state.power) SPTVAudio.useGen();
     }, { once: false });
 
     document.addEventListener("keydown", function (ev) {

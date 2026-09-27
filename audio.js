@@ -15,6 +15,8 @@ var SPTVAudio = (function () {
   var lastOnset = 0;
   var zeros = { rms: 0, bass: 0, mid: 0, high: 0, onset: 0 };
 
+  var wantMute = false;
+
   function ensure() {
     if (ctx) return true;
     var AC = window.AudioContext || window.webkitAudioContext;
@@ -25,53 +27,28 @@ var SPTVAudio = (function () {
       return false;
     }
     master = ctx.createGain();
-    master.gain.value = 0.9;
+    master.gain.value = wantMute ? 0 : 0.8;
     analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.72;
     freq = new Uint8Array(analyser.frequencyBinCount);
     master.connect(analyser);
-    analyser.connect(ctx.destination);
+    master.connect(ctx.destination);
+    var silent = ctx.createGain();
+    silent.gain.value = 0;
+    analyser.connect(silent);
+    silent.connect(ctx.destination);
     recNode = ctx.createMediaStreamDestination();
     master.connect(recNode);
 
-    var o1 = ctx.createOscillator();
-    var o2 = ctx.createOscillator();
-    o1.type = "triangle";
-    o2.type = "square";
-    o1.frequency.value = 55;
-    o2.frequency.value = 82.5;
+    var tone = ctx.createOscillator();
+    tone.type = "sine";
+    tone.frequency.value = 73;
     genGain = ctx.createGain();
-    genGain.gain.value = 0.07;
-    o1.connect(genGain);
-    o2.connect(genGain);
+    genGain.gain.value = 0;
+    tone.connect(genGain);
     genGain.connect(master);
-    o1.start();
-    o2.start();
-
-    var lfo = ctx.createOscillator();
-    var lfoGain = ctx.createGain();
-    lfo.frequency.value = 0.55;
-    lfoGain.gain.value = 18;
-    lfo.connect(lfoGain);
-    lfoGain.connect(o1.frequency);
-    lfo.start();
-
-    var buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-    var data = buffer.getChannelData(0);
-    for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    var noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    noise.loop = true;
-    var hp = ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.value = 3200;
-    var ng = ctx.createGain();
-    ng.gain.value = 0.012;
-    noise.connect(hp);
-    hp.connect(ng);
-    ng.connect(genGain);
-    noise.start();
+    tone.start();
     return true;
   }
 
@@ -83,12 +60,13 @@ var SPTVAudio = (function () {
 
   function setGen(on) {
     if (!genGain) return;
-    genGain.gain.value = on ? 0.07 : 0;
+    genGain.gain.value = on ? 0.03 : 0;
   }
 
   function setMuted(muted) {
+    wantMute = !!muted;
     if (!master) return;
-    master.gain.value = muted ? 0 : 0.9;
+    master.gain.value = wantMute ? 0 : 0.8;
   }
 
   function silenceElements() {
@@ -105,7 +83,7 @@ var SPTVAudio = (function () {
     silenceElements();
     try {
       streamNode = ctx.createMediaStreamSource(stream);
-      streamNode.connect(master);
+      streamNode.connect(analyser);
       setGen(false);
     } catch (err) {
       setGen(true);
