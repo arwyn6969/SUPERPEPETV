@@ -26,6 +26,8 @@ var SPTV = (function () {
     fileUrl: "",
     fileKind: "",
     facing: "user",
+    micId: "",
+    micLabel: "",
     snowUntil: 0,
     knobs: null,
     stamps: [],
@@ -174,7 +176,7 @@ var SPTV = (function () {
     if (foot) {
       var hint = "GENERATOR IS ON THE GLASS";
       if (state.source === "CAM") hint = "CAMERA ON. CAM AGAIN FLIPS FRONT / BACK";
-      else if (state.source === "MIC") hint = "MIC DRIVES THE PICTURE. NOT THE SPEAKERS";
+      else if (state.source === "MIC") hint = "MIC ON" + (state.micLabel ? " — " + state.micLabel : "") + ". MIC AGAIN TRIES THE NEXT ONE";
       else if (state.source === "FILE") hint = "CLIP ON. FILE AGAIN PICKS ANOTHER";
       else if (state.source === "YT") hint = "YOUTUBE ON. REC SHARES THIS TAB TO SAVE THE CLIP";
       foot.textContent = hint;
@@ -215,10 +217,40 @@ var SPTV = (function () {
   }
 
   function stopStream() {
+    if (window.SPTVAudio) SPTVAudio.useGen();
     if (state.stream) {
       state.stream.getTracks().forEach(function (t) { t.stop(); });
       state.stream = null;
     }
+  }
+
+  function mediaWhy(err, kind) {
+    var name = (err && err.name) || "";
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return "CHROME BLOCKED THE " + kind + ". CLICK THE LOCK, ALLOW IT. IF IT NEVER ASKS: MAC SETTINGS, PRIVACY, MICROPHONE, CHROME ON.";
+    }
+    if (name === "NotReadableError" || name === "AbortError") {
+      return kind + " IS BUSY. QUIT MEET, ZOOM, OR FACETIME, THEN PRESS IT AGAIN.";
+    }
+    if (name === "NotFoundError" || name === "OverconstrainedError") {
+      return "NO " + kind + " ON THIS MAC.";
+    }
+    return kind + " DID NOT START.";
+  }
+
+  function audioInputs() {
+    var md = navigator.mediaDevices;
+    if (!md || !md.enumerateDevices) return Promise.resolve([]);
+    return md.enumerateDevices().then(function (list) {
+      return list.filter(function (d) { return d.kind === "audioinput" && d.deviceId; });
+    }, function () { return []; });
+  }
+
+  function micRank(label) {
+    var s = (label || "").toLowerCase();
+    if (/zoom|meet|teams|discord|blackhole|aggregate|loopback|virtual/.test(s)) return 2;
+    if (/macbook|built-in|internal/.test(s)) return 0;
+    return 1;
   }
 
   function clearPicture() {
@@ -323,7 +355,7 @@ var SPTV = (function () {
   function setSource(src) {
     if (src === "GEN") return useGen();
     if (src === "CAM") return startCam();
-    if (src === "MIC") return startMic();
+    if (src === "MIC") return startMic(false);
     if (src === "FILE") return resumeFile();
     if (src === "YT") {
       if (!window.SPTV_HOSTED || !window.SPTVYouTube) {
@@ -358,11 +390,12 @@ var SPTV = (function () {
   function startCam() {
     var md = navigator.mediaDevices;
     if (!md || !md.getUserMedia || !window.isSecureContext) {
-      failSoft("CAMERA BLOCKED");
+      failSoft("CAMERA NEEDS HTTPS IN CHROME");
       return;
     }
     var facing = state.facing === "environment" ? "environment" : "user";
     var ticket = beginMedia();
+    stopStream();
     state.source = "CAM";
     updateChrome();
     feedback("CAMERA…");
@@ -371,10 +404,10 @@ var SPTV = (function () {
       [{ facingMode: { exact: facing } }, false],
       [true, false]
     ];
-    function next(i) {
+    function next(i, lastErr) {
       if (ticket !== mediaGen) return;
       if (i >= tries.length) {
-        failSoft("CAMERA BLOCKED");
+        failSoft(mediaWhy(lastErr, "CAMERA"));
         return;
       }
       var mode = tries[i][0];
@@ -383,9 +416,9 @@ var SPTV = (function () {
         if (ticket !== mediaGen) { dropStream(stream); return; }
         armCam(stream, audio);
         if (!audio) feedback(camLabel() + "  MIC OFF");
-      }, function () { next(i + 1); });
+      }, function (err) { next(i + 1, err); });
     }
-    next(0);
+    next(0, null);
   }
 
   function armCam(stream, withAudio) {
@@ -407,30 +440,85 @@ var SPTV = (function () {
     feedback(camLabel());
   }
 
-  function startMic() {
+  function startMic(cycle) {
     var md = navigator.mediaDevices;
     if (!md || !md.getUserMedia || !window.isSecureContext) {
-      failSoft("MIC BLOCKED");
+      failSoft("MIC NEEDS HTTPS IN CHROME");
       return;
     }
     var ticket = beginMedia();
+    var prevId = state.micId;
+    stopStream();
     state.source = "MIC";
     updateChrome();
     feedback("MIC…");
-    md.getUserMedia({ audio: true, video: false }).then(function (stream) {
+
+    function open(audio) {
+      return md.getUserMedia({ audio: audio, video: false });
+    }
+
+    function arm(stream, label) {
       if (ticket !== mediaGen) { dropStream(stream); return; }
-      stopStream();
-      clearPicture();
       pauseFile();
+      clearPicture();
       if (window.SPTVYouTube) SPTVYouTube.exit();
       state.stream = stream;
       state.source = "MIC";
+      var track = stream.getAudioTracks()[0];
+      var settings = track && track.getSettings ? track.getSettings() : {};
+      state.micId = settings.deviceId || "";
+      state.micLabel = (track && track.label) || label || "MIC";
       if (window.SPTVAudio) SPTVAudio.attachStream(stream);
       hideNotice();
       updateChrome();
-      feedback("MIC");
-    }, function () {
-      if (ticket === mediaGen) failSoft("MIC BLOCKED");
+      feedback(state.micLabel);
+    }
+
+    function giveUp(err) {
+      if (ticket === mediaGen) failSoft(mediaWhy(err, "MIC"));
+    }
+
+    function tryList(devices, err) {
+      var ordered = devices.slice().sort(function (a, b) { return micRank(a.label) - micRank(b.label); });
+      var i = 0;
+      function step() {
+        if (ticket !== mediaGen) return;
+        if (i >= ordered.length) { giveUp(err); return; }
+        var dev = ordered[i++];
+        open({ deviceId: { exact: dev.deviceId } }).then(function (stream) {
+          arm(stream, dev.label);
+        }, step);
+      }
+      step();
+    }
+
+    if (cycle) {
+      audioInputs().then(function (devices) {
+        if (ticket !== mediaGen) return;
+        if (devices.length < 2) {
+          open(true).then(function (stream) { arm(stream); }, giveUp);
+          return;
+        }
+        var at = -1;
+        for (var i = 0; i < devices.length; i++) if (devices[i].deviceId === prevId) at = i;
+        var dev = devices[(at + 1) % devices.length];
+        open({ deviceId: { exact: dev.deviceId } }).then(function (stream) {
+          arm(stream, dev.label);
+        }, function (err) { tryList(devices, err); });
+      });
+      return;
+    }
+
+    open(true).then(function (stream) {
+      arm(stream);
+    }, function (err) {
+      if (ticket !== mediaGen) return;
+      var busy = err && (err.name === "NotReadableError" || err.name === "AbortError" || err.name === "OverconstrainedError");
+      if (!busy) { giveUp(err); return; }
+      audioInputs().then(function (devices) {
+        if (!devices.length) giveUp(err);
+        else tryList(devices, err);
+      });
     });
   }
 
@@ -751,7 +839,9 @@ var SPTV = (function () {
       if (state.source === "CAM") state.facing = state.facing === "environment" ? "user" : "environment";
       startCam();
     });
-    $("mic_button").addEventListener("click", function () { setSource("MIC"); });
+    $("mic_button").addEventListener("click", function () {
+      startMic(state.source === "MIC");
+    });
     $("file_button").addEventListener("click", function () {
       if (state.source === "FILE" || !state.fileUrl) {
         var input = $("file_input");
